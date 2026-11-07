@@ -1011,21 +1011,25 @@ function tcCat(x){
   return guessCat(t,"");
 }
 var TC={busy:false,err:""};
+/* Date de début des dépenses courantes du voyage lues dans Tricount */
+var TC_FROM="2026-11-05";
 function tcSync(silent,fresh){
   var link=tcLink();
   if(!link){if(!silent)toast("Collez d’abord le lien de partage Tricount");return;}
   if(TC.busy)return;TC.busy=true;TC.err="";if(!silent)render(true);
   fetch(aiBase()+"/api/tricount?link="+encodeURIComponent(link)+(fresh?"&fresh=1":""),{headers:aiHeaders()}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j&&j.error||("HTTP "+r.status));return j;});})
   .then(function(j){
+    /* seules les dépenses à partir du début du voyage comptent (avant : réservations, déjà dans le budget) */
+    var all=j.expenses||[],exps=all.filter(function(x){return !/^\d{4}-\d{2}-\d{2}$/.test(x.date)||x.date>=TC_FROM;});
     var prev={},first=!S.exp.some(function(e){return e.tid;});S.exp.forEach(function(e){if(e.tid)prev[e.tid]=e;});
-    var added=(j.expenses||[]).filter(function(x){return !prev[x.tid];});
+    var added=exps.filter(function(x){return !prev[x.tid];});
     S.exp=S.exp.filter(function(e){return !e.tid;});
-    (j.expenses||[]).forEach(function(x){var p=prev[x.tid];var cur=/^(THB|EUR)$/.test(x.cur)?x.cur:(/^(THB|EUR)$/.test(x.cur_tricount)?x.cur_tricount:"EUR");var amt=cur===x.cur?x.amt:x.amt_tricount;
+    exps.forEach(function(x){var p=prev[x.tid];var cur=/^(THB|EUR)$/.test(x.cur)?x.cur:(/^(THB|EUR)$/.test(x.cur_tricount)?x.cur_tricount:"EUR");var amt=cur===x.cur?x.amt:x.amt_tricount;
       S.exp.push({id:"t"+x.tid,tid:x.tid,date:/^\d{4}-\d{2}-\d{2}$/.test(x.date)?x.date:dateKey(nowMs(),TRIP_TZ),title:x.title,amt:amt,cur:cur,cat:(p&&p.catUser)?p.cat:tcCat(x),catUser:!!(p&&p.catUser),payer:x.payer||"",src:"tricount",when:x.when||""});});
     if(!first&&added.length)S.tcNew={at:Date.now(),ids:added.map(function(x){return x.tid;})};
-    S.tcSync={at:Date.now(),title:j.title||"",n:(j.expenses||[]).length,currency:j.currency||""};save();
+    S.tcSync={at:Date.now(),title:j.title||"",n:exps.length,skip:all.length-exps.length,currency:j.currency||""};save();
     var nt=first?"":added.length?added.length+(added.length>1?" nouvelles dépenses":" nouvelle dépense")+" : "+added.slice(0,3).map(function(x){return x.title;}).join(", "):"Aucune nouvelle dépense dans Tricount";
-    if(!silent)toast(first?(j.expenses||[]).length+" dépense(s) lue(s) dans Tricount":nt);else if(added.length&&!first)toast("Tricount · "+nt);
+    if(!silent)toast(first?exps.length+" dépense(s) lue(s) dans Tricount":nt);else if(added.length&&!first)toast("Tricount · "+nt);
   },function(e){TC.err=(e&&e.message)||"erreur";if(!silent)toast("Tricount : "+TC.err);})
   .then(function(){TC.busy=false;if(UI.tab==="tricount")render(true);});
 }
@@ -1051,7 +1055,7 @@ function vTricount2(){
   h+='<div class="card"><h3>Synchronisation Tricount</h3>';
   if(tcAvailable()){
     h+='<div class="row"><button class="btn" data-a="tcsync"'+(TC.busy?" disabled":"")+'>'+(TC.busy?"Lecture en cours…":"Synchroniser avec Tricount")+'</button>'+(link?'<a class="cp" href="'+esc(link)+'" target="_blank" rel="noopener">Ouvrir Tricount</a>':'')+'</div>';
-    h+='<p class="small muted" style="margin-top:6px">'+(S.tcSync?'Dernière lecture : '+esc(cap(fmt(S.tcSync.at,TRIP_TZ,{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",hourCycle:"h23"})))+' · '+S.tcSync.n+' dépense(s)'+(S.tcSync.title?' · « '+esc(S.tcSync.title)+' »':''):'Jamais synchronisé.')+(TC.err?'<br><span style="color:var(--alert)">'+esc(TC.err)+'</span>':'')+'</p>';
+    h+='<p class="small muted" style="margin-top:6px">'+(S.tcSync?'Dernière lecture : '+esc(cap(fmt(S.tcSync.at,TRIP_TZ,{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",hourCycle:"h23"})))+' · '+S.tcSync.n+' dépense(s) depuis le 5 novembre'+(S.tcSync.skip?' ('+S.tcSync.skip+' antérieure'+(S.tcSync.skip>1?'s':'')+' ignorée'+(S.tcSync.skip>1?'s':'')+')':'')+(S.tcSync.title?' · « '+esc(S.tcSync.title)+' »':''):'Jamais synchronisé.')+(TC.err?'<br><span style="color:var(--alert)">'+esc(TC.err)+'</span>':'')+'</p>';
   }else{
     h+='<p class="small">La lecture automatique de Tricount passe par l’API perso installée sur votre serveur Minix (version Docker). '+(NATIVE?'Dans l’APK, indiquez l’adresse du serveur dans Pratique → Réglages.':'Elle n’est pas disponible dans l’app Claude : utilisez la capture d’écran ci-dessous.')+'</p>';
   }
