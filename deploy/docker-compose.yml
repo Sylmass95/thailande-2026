@@ -10,7 +10,8 @@ services:
       dockerfile: server/Dockerfile
     restart: unless-stopped
     ports:
-      - "${APP_PORT:-8080}:8080"   # port du Minix : APP_PORT dans deploy/.env    environment:
+      - "${APP_PORT:-8080}:8080"   # port du Minix : APP_PORT dans deploy/.env
+    environment:
       - TRICOUNT_BRIDGE=http://tricount:8090
       - WEB_ROOT=/repo/dist
     env_file:
