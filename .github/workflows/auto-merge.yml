@@ -33,13 +33,19 @@ jobs:
           node-version: 22
           cache: npm
 
+      # Ne regarder que les PR ouvertes : une branche réutilisée après une fusion
+      # doit avoir une nouvelle PR (« gh pr view <branche> » renverrait l’ancienne, déjà fusionnée).
       - name: Ouvrir la pull request si besoin
+        id: pr
         run: |
-          if ! gh pr view "$BRANCH" --json number >/dev/null 2>&1; then
+          PR=$(gh pr list --head "$BRANCH" --base main --state open --json number --jq '.[0].number')
+          if [ -z "$PR" ]; then
             TITLE=$(git log -1 --pretty=%s)
             gh pr create --base main --head "$BRANCH" --title "$TITLE" \
               --body "Pull request ouverte automatiquement. Elle sera fusionnée si le build et le test passent."
+            PR=$(gh pr list --head "$BRANCH" --base main --state open --json number --jq '.[0].number')
           fi
+          echo "number=$PR" >> "$GITHUB_OUTPUT"
 
       - name: Build et test
         id: test
@@ -52,7 +58,7 @@ jobs:
       - name: "Tests en échec, PR laissée ouverte"
         if: steps.test.outcome != 'success'
         run: |
-          gh pr comment "$BRANCH" --body "Le build ou le test a échoué : la fusion automatique est suspendue. Demandez à Claude Code de corriger, puis de repousser sur cette branche."
+          gh pr comment "${{ steps.pr.outputs.number }}" --body "Le build ou le test a échoué : la fusion automatique est suspendue. Demandez à Claude Code de corriger, puis de repousser sur cette branche."
           exit 1
 
       - name: Fichiers modifiés
@@ -62,7 +68,7 @@ jobs:
           if git diff --name-only origin/main...HEAD | grep -qE '^(src|public|apk)/'; then echo "apk=yes" >> "$GITHUB_OUTPUT"; fi
 
       - name: Fusionner dans main
-        run: gh pr merge "$BRANCH" --merge --delete-branch
+        run: gh pr merge "${{ steps.pr.outputs.number }}" --merge --delete-branch
 
       - name: Recompiler l'APK si l'app a changé
         if: steps.diff.outputs.apk == 'yes'
