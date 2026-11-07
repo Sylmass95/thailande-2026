@@ -575,13 +575,13 @@ var MINIX_DEFAULT="https://minix.tailc987de.ts.net";
 function minixDefault(){return NATIVE?MINIX_DEFAULT:"";}
 function aiBase(){return (S.set.aiBase||minixDefault()).replace(/\/+$/,"");}
 function aiRerender(){if(UI.tab==="ai"&&!UI.sheet)render(true);}
-function aiServer(){
-  var base=aiBase();
-  if(!base&&!(/^https?:$/.test(location.protocol)&&!NATIVE)){AI.mode="none";aiRerender();return;}
+function aiServer(cb){
+  var base=aiBase(),done=function(){if(typeof cb==="function")try{cb();}catch(e){}};
+  if(!base&&!(/^https?:$/.test(location.protocol)&&!NATIVE)){AI.mode="none";aiRerender();done();return;}
   try{
     AI.reach="pending";AI.err="";
-    fetch(base+"/api/health",{headers:aiHeaders()}).then(function(r){if(!r.ok)throw new Error("réponse HTTP "+r.status);return r.json().catch(function(){throw new Error("réponse inattendue : ce n’est pas le serveur du carnet");});}).then(function(j){AI.reach=j&&j.ok?"ok":"ko";AI.needsToken=!!(j&&j.needsToken);AI.mode=(j&&j.ai)?"server":"none";AI.web=!!(j&&j.web);AI.tc=!!(j&&j.tricount);if(AI.tc&&tcLink()&&(!S.tcSync||Date.now()-S.tcSync.at>900000))tcSync(true);}).catch(function(e){AI.mode="none";AI.reach="ko";AI.err=(e instanceof TypeError)?"aucune réponse":((e&&e.message)||"");}).then(function(){aiRerender();var st=document.getElementById("minix-state");if(st)st.textContent="État : "+minixState();});
-  }catch(e){AI.mode="none";aiRerender();}
+    fetch(base+"/api/health",{headers:aiHeaders()}).then(function(r){if(!r.ok)throw new Error("réponse HTTP "+r.status);return r.json().catch(function(){throw new Error("réponse inattendue : ce n’est pas le serveur du carnet");});}).then(function(j){AI.reach=j&&j.ok?"ok":"ko";AI.needsToken=!!(j&&j.needsToken);AI.mode=(j&&j.ai)?"server":"none";AI.web=!!(j&&j.web);AI.tc=!!(j&&j.tricount);if(AI.tc&&tcLink()&&(!S.tcSync||Date.now()-S.tcSync.at>900000))tcSync(true);}).catch(function(e){AI.mode="none";AI.reach="ko";AI.err=(e instanceof TypeError)?"aucune réponse":((e&&e.message)||"");}).then(function(){aiRerender();var st=document.getElementById("minix-state");if(st)st.textContent="État : "+minixState();done();});
+  }catch(e){AI.mode="none";aiRerender();done();}
 }
 /* État lisible de la connexion au Minix (mises à jour) et de l’assistant IA */
 function minixState(){
@@ -1037,6 +1037,17 @@ function tcSync(silent,fresh,reset){
   .then(function(){TC.busy=false;if(UI.tab==="tricount")render(true);});
 }
 function tcAvailable(){return !!AI.tc;}
+/* un Minix peut lire Tricount : adresse renseignée (APK) ou page servie par le Minix (pas l’app Claude) */
+function tcPossible(){return !!aiBase()||(/^https?:$/.test(location.protocol)&&!NATIVE&&!window.claude);}
+/* bouton « Mettre à jour depuis Tricount » : reconnecte le Minix si besoin, puis relit Tricount */
+function tcSyncNow(){
+  if(AI.tc){tcSync(false,true);return;}
+  toast("Connexion au Minix…");AI.mode="pending";if(UI.tab==="tricount")render(true);
+  aiServer(function(){
+    if(AI.tc)tcSync(false,true);
+    else{toast(AI.reach==="ok"?"Le Minix répond, mais le relais Tricount est indisponible : réessayez dans une minute":"Minix injoignable : vérifiez Tailscale, puis Pratique → Réglages → Tester la connexion");if(UI.tab==="tricount")render(true);}
+  });
+}
 /* Dernières dépenses lues dans Tricount, les nouvelles de la dernière synchronisation en tête */
 function tcRecentHtml(){
   var list=S.exp.filter(function(e){return e.src==="tricount";});
@@ -1056,8 +1067,9 @@ function vTricount2(){
   var h='<header class="top"><div><h1>Tricount et budget</h1><p>Dépenses partagées et suivi du budget</p></div></header>';
   /* synchro */
   h+='<div class="card"><h3>Synchronisation Tricount</h3>';
-  if(tcAvailable()){
-    h+='<div class="row"><button class="btn" data-a="tcsync"'+(TC.busy?" disabled":"")+'>'+(TC.busy?"Lecture en cours…":"Synchroniser avec Tricount")+'</button>'+(link?'<a class="cp" href="'+esc(link)+'" target="_blank" rel="noopener">Ouvrir Tricount</a>':'')+'</div>';
+  if(tcPossible()){
+    if(!AI.tc&&AI.reach!=="pending"&&AI.mode!=="pending")h+='<p class="small" style="color:var(--alert);margin-bottom:8px">Relais Tricount injoignable pour l’instant : Minix hors de portée ou en cours de redémarrage. Touchez le bouton pour réessayer.</p>';
+    h+='<div class="row"><button class="btn" data-a="tcsync"'+(TC.busy?" disabled":"")+'>'+(TC.busy?"Lecture en cours…":"Mettre à jour depuis Tricount")+'</button>'+(link?'<a class="cp" href="'+esc(link)+'" target="_blank" rel="noopener">Ouvrir Tricount</a>':'')+'</div>';
     h+='<p class="small muted" style="margin-top:6px">'+(S.tcSync?'Dernière lecture : '+esc(cap(fmt(S.tcSync.at,TRIP_TZ,{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",hourCycle:"h23"})))+' · '+S.tcSync.n+' dépense(s) depuis le '+esc(tcFromTxt())+(S.tcSync.skip?' ('+S.tcSync.skip+' antérieure'+(S.tcSync.skip>1?'s':'')+' ignorée'+(S.tcSync.skip>1?'s':'')+')':'')+(S.tcSync.title?' · « '+esc(S.tcSync.title)+' »':''):'Jamais synchronisé.')+(TC.err?'<br><span style="color:var(--alert)">'+esc(TC.err)+'</span>':'')+'</p>';
   }else{
     h+='<p class="small">La lecture automatique de Tricount passe par l’API perso installée sur votre serveur Minix (version Docker). '+(NATIVE?'Dans l’APK, indiquez l’adresse du serveur dans Pratique → Réglages.':'Elle n’est pas disponible dans l’app Claude : utilisez la capture d’écran ci-dessous.')+'</p>';
@@ -1208,7 +1220,8 @@ document.addEventListener("click",function(e){
   var b=e.target.closest("[data-a]");if(!b)return;
   var a=b.getAttribute("data-a"),id=b.getAttribute("data-id"),v=b.getAttribute("data-v");
   switch(a){
-    case "tab":if(v==="tricount"&&AI.tc&&tcLink()&&(!S.tcSync||Date.now()-S.tcSync.at>60000))setTimeout(function(){tcSync(true);},50);UI.tab=v;if(UI.sheet){UI.sheet=null;renderSheet();}render();window.scrollTo(0,0);break;
+    case "tab":if(v==="tricount"&&AI.tc&&tcLink()&&(!S.tcSync||Date.now()-S.tcSync.at>60000))setTimeout(function(){tcSync(true);},50);
+      else if(v==="tricount"&&!AI.tc&&tcPossible()&&AI.mode!=="pending")aiServer(function(){if(AI.tc&&tcLink())tcSync(true);else if(UI.tab==="tricount")render(true);});UI.tab=v;if(UI.sheet){UI.sheet=null;renderSheet();}render();window.scrollTo(0,0);break;
     case "day":var n=parseInt(b.getAttribute("data-n"),10);UI.openDay=(UI.openDay===n)?null:n;render(true);break;
     case "done":S.done[id]=!S.done[id];save();render(true);break;
     case "ack":S.ack[id]=true;save();render(true);break;
@@ -1244,7 +1257,7 @@ document.addEventListener("click",function(e){
     case "expadd":var am=parseFloat(($("#ex-amt")||{}).value);if(!(am>0)){toast("Indiquez un montant");break;}var tt=(($("#ex-title")||{}).value||"").trim()||"Dépense";var cc=($("#ex-cat")||{}).value;expAdd([{amt:am,cur:($("#ex-cur")||{}).value,title:tt,cat:cc,date:($("#ex-date")||{}).value}],"manuel");toast("Dépense ajoutée");render(true);break;
     case "expdel":S.exp=S.exp.filter(function(e){return e.id!==id;});save();UI.expOpen=true;render(true);break;
     case "expclear":if(confirm("Effacer toutes les dépenses enregistrées ?")){S.exp=[];save();render(true);}break;
-    case "tcsync":tcSync(false,true);break;
+    case "tcsync":tcSyncNow();break;
     case "budscen":applyScenario(v);toast(v==="max"?"Répartition 4 400 € appliquée":"Répartition 4 000 € appliquée");render(true);break;
     case "budseed":if(confirm("Remplacer le budget par les valeurs du roadbook ?")){seedBudget(true);toast("Budget du roadbook rechargé");render(true);}break;
     case "csvpick":var cf=$("#csv-file");if(cf)cf.click();break;
