@@ -74,7 +74,7 @@ L’adresse affichée, du type `https://minix.xxxx.ts.net`, est celle de votre a
 ## 6. Sur le téléphone
 
 - **Webapp** : Chrome → `https://minix.xxxx.ts.net` → ⋮ → **Installer l’application**. Elle marche hors ligne et se met à jour seule.
-- **APK** (alarmes natives) : dépôt GitHub → **Releases → APK – dernière version** → `thailande-2026.apk`. Dans l’APK : **Pratique → Réglages → Serveur Minix** : collez `https://minix.xxxx.ts.net`. L’APK reçoit alors aussi les mises à jour en une trentaine de secondes.
+- **APK** (alarmes natives) : dépôt GitHub → **Releases → APK – dernière version** → `thailande-2026.apk`. Dans l’APK, l’adresse du Minix est préremplie (`MINIX_DEFAULT` dans `src/app.js`) ; sinon **Pratique → Réglages → Serveur Minix** : collez `https://minix.xxxx.ts.net`. L’APK reçoit alors aussi les mises à jour en une trentaine de secondes.
 - **Claude Code** : appli Claude → onglet **Code** → connectez GitHub et autorisez `thailande-2026` → créez l’environnement par défaut (accès réseau « de confiance »).
 
 ## 7. Faire une modification

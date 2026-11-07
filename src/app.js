@@ -314,7 +314,7 @@ function vTools(){
    +'<label style="display:block;margin-top:10px">Vitesse de la voix<select data-a="speed">'+[0.8,0.9,1,1.1,1.25].map(function(v){return '<option value="'+v+'"'+(S.set.speed===v?" selected":"")+'>'+(v===1?"Normale":"× "+String(v).replace(".",","))+'</option>';}).join("")+'</select></label>'
    +'<div class="row" style="margin-top:12px;justify-content:space-between"><div><b>Lecture automatique</b><p class="muted small">Démarre seule à l’arrivée sur un site, après une première lecture manuelle.</p></div><button class="btn '+(S.set.auto?"":"alt")+'" data-a="auto" aria-pressed="'+S.set.auto+'">'+(S.set.auto?"Activée":"Désactivée")+'</button></div>'
    +'<div class="row" style="margin-top:12px"><button class="btn alt" data-a="voicetest">Tester la voix</button></div><p class="muted small" style="margin-top:6px">'+vs+' Pour une voix hors ligne, installez la voix française dans les réglages du téléphone (synthèse vocale).</p>'
-   +'<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><b>Serveur Minix</b><p class="muted small">Adresse HTTPS du Minix, par exemple https://minix.xxxx.ts.net. Sert à l’assistant IA, à Tricount et aux mises à jour rapides de l’APK. Laissez vide dans l’app Claude et sur la page du Minix.</p><input type="url" data-a="aibase" placeholder="https://…" value="'+esc(S.set.aiBase||"")+'" style="margin-top:6px"><input type="password" data-a="aitoken" placeholder="Code d’accès (APP_TOKEN)" value="'+esc(S.set.aiToken||"")+'" style="margin-top:8px"><p class="muted small" id="minix-state" style="margin-top:6px">État : '+esc(minixState())+'</p><div class="row" style="margin-top:8px"><button class="btn alt" data-a="minixtest">Tester la connexion au Minix</button></div><div id="minix-test" class="small" style="margin-top:8px"></div>'
+   +'<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><b>Serveur Minix</b><p class="muted small">Adresse HTTPS du Minix'+(NATIVE?', préremplie : '+MINIX_DEFAULT+' (si vous videz le champ, elle est reprise par défaut)':', par exemple https://minix.xxxx.ts.net')+'. Sert à l’assistant IA, à Tricount et aux mises à jour rapides de l’APK. Laissez vide dans l’app Claude et sur la page du Minix.</p><input type="url" data-a="aibase" placeholder="https://…" value="'+esc(S.set.aiBase||minixDefault())+'" style="margin-top:6px"><input type="password" data-a="aitoken" placeholder="Code d’accès (APP_TOKEN)" value="'+esc(S.set.aiToken||"")+'" style="margin-top:8px"><p class="muted small" id="minix-state" style="margin-top:6px">État : '+esc(minixState())+'</p><div class="row" style="margin-top:8px"><button class="btn alt" data-a="minixtest">Tester la connexion au Minix</button></div><div id="minix-test" class="small" style="margin-top:8px"></div>'
    +'<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><label>Simuler une date et une heure (heure de Thaïlande)<input type="datetime-local" id="sim" value="'+simValue()+'" data-a="sim"></label>'
    +'<div class="row" style="margin-top:10px"><button class="btn alt" data-a="simreset">Revenir à l’heure réelle</button><button class="btn alt" data-a="resetrem">Réinitialiser les rappels</button></div>'
    +'<p class="muted small" style="margin-top:10px">Utile pour tester l’application avant le départ.</p></div></details>';
@@ -567,7 +567,10 @@ function loadAi(){try{return JSON.parse(localStorage.getItem(AIK)||"[]");}catch(
 var AI={mode:"pending",sample:null,limits:null,msgs:loadAi(),busy:false,ctl:null,img:null,imgUrl:null,draft:"",live:""};
 function saveAi(){try{localStorage.setItem(AIK,JSON.stringify(AI.msgs.slice(-40)));}catch(e){}}
 function aiHeaders(){var h={"Content-Type":"application/json"};if(S.set.aiToken)h["X-App-Token"]=S.set.aiToken;return h;}
-function aiBase(){return (S.set.aiBase||"").replace(/\/+$/,"");}
+/* Adresse du Minix utilisée par défaut dans l’APK (la page du Minix et l’app Claude n’en ont pas besoin) */
+var MINIX_DEFAULT="https://minix.tailc987de.ts.net";
+function minixDefault(){return NATIVE?MINIX_DEFAULT:"";}
+function aiBase(){return (S.set.aiBase||minixDefault()).replace(/\/+$/,"");}
 function aiRerender(){if(UI.tab==="ai"&&!UI.sheet)render(true);}
 function aiServer(){
   var base=aiBase();
@@ -1239,7 +1242,7 @@ document.addEventListener("change",function(e){
   if(a==="csvfile"){var cfile=el.files&&el.files[0];if(!cfile)return;var rd=new FileReader();rd.onload=function(){var r=importCSV(String(rd.result||""),($("#csv-cur")||{}).value||"EUR");if(r.error)toast(r.error);else toast(r.added+" dépense(s) importée(s), "+r.skipped+" ignorée(s)");UI.expOpen=true;render(true);};rd.readAsText(cfile);return;}
   if(a==="tclink"){S.set.tricount=el.value.trim();save();render(true);if(AI.tc&&S.set.tricount)tcSync(false);return;}
   if(a==="aibase"){S.set.aiBase=el.value.trim();save();AI.mode="pending";aiServer();return;}
-  if(a==="aitoken"){S.set.aiToken=el.value.trim();save();if(S.set.aiBase){AI.mode="pending";aiServer();}return;}
+  if(a==="aitoken"){S.set.aiToken=el.value.trim();save();if(aiBase()){AI.mode="pending";aiServer();}return;}
   if(a==="cash"){S.cash[el.getAttribute("data-id")]=el.checked;save();render(true);reopen();}
   else if(a==="check"){S.checks[el.getAttribute("data-id")]=el.checked;save();}
   else if(a==="theme"){S.set.theme=el.value;save();setTheme();}

@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths: ["src/**", "public/**", "apk/**", ".github/workflows/apk.yml"]
   workflow_dispatch:
+  schedule:
+    - cron: "17 3 */3 * *"   # tous les 3 jours : relit la clé de signature pour que GitHub ne l’efface pas (7 jours sans usage)
 
 permissions:
   contents: write
@@ -14,7 +16,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  keystore-keepalive:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
+
   apk:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -49,6 +61,14 @@ jobs:
 
       - name: Accepter les licences Android SDK
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      # Même clé de signature à chaque compilation : le nouvel APK s’installe par-dessus l’ancien,
+      # sans conflit ni perte des données. Sans cela, chaque machine GitHub génère sa propre clé.
+      - name: Clé de signature conservée entre les compilations
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
 
       - name: Compiler
         working-directory: apk/android
