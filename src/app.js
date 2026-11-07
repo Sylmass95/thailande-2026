@@ -1112,13 +1112,18 @@ function vTricount2(){
 var UPD={pending:false,lastInput:Date.now()};
 function liveT(){try{var c=JSON.parse(localStorage.getItem("thai26-live")||"null");return c&&c.t||0;}catch(e){return 0;}}
 function updIdle(){var a=document.activeElement;return !TTS.playing&&!AI.busy&&!(a&&/INPUT|TEXTAREA|SELECT/.test(a.tagName))&&Date.now()-UPD.lastInput>45000;}
-function updApply(){try{sessionStorage.setItem("thai26-tab",UI.tab);}catch(e){}location.reload();}
+/* Installe la version reçue puis redémarre l’app ; au redémarrage, un message confirme la nouvelle version */
+function updApply(){
+  try{sessionStorage.setItem("thai26-tab",UI.tab);sessionStorage.setItem("thai26-updated",String(typeof BUILD!=="undefined"?BUILD.t:0));}catch(e){}
+  var p=$("#prompt");if(p){p.className="on";p.innerHTML='<div class="pr-in"><b>Installation de la mise à jour…</b><span class="small">L’app redémarre dans un instant.</span></div>';}
+  setTimeout(function(){location.reload();},700);
+}
 function updReady(t){
   UPD.pending=true;
   var tried=0;try{tried=+sessionStorage.getItem("thai26-upd-tried")||0;}catch(e){}
   if(updIdle()&&tried!==t){try{sessionStorage.setItem("thai26-upd-tried",String(t));}catch(e){}updApply();return;}
   var p=$("#prompt");if(p.className==="on")return;
-  p.className="on";p.innerHTML='<div class="pr-in"><b>Nouvelle version de l’app disponible</b><span class="small">Elle s’installe en un instant.</span><div class="row"><button class="btn" data-a="updnow">Mettre à jour</button><button class="btn alt" data-a="dismissprompt">Plus tard</button></div></div>';
+  p.className="on";p.innerHTML='<div class="pr-in"><b>Nouvelle version de l’app disponible</b><span class="small">Elle s’installe et l’app redémarre en un instant.</span><div class="row"><button class="btn" data-a="updnow">Installer et redémarrer</button><button class="btn alt" data-a="dismissprompt">Plus tard</button></div></div>';
 }
 /* APK : la version qui tourne vient-elle du Minix (app-bundle.json) ou de l’APK installé ? */
 function runningFromMinix(){
@@ -1162,7 +1167,8 @@ function updCheck(cb){
 function updCheckNow(){
   toast("Recherche d’une nouvelle version…");
   updCheck(function(s){
-    var m={none:"Vous avez la dernière version",new:"Nouvelle version disponible",offline:"Pas de connexion : vérification impossible",
+    if(s==="new"){updApply();return;}
+    var m={none:"Vous avez la dernière version",offline:"Pas de connexion : vérification impossible",
       unavailable:NATIVE?"Adresse du Minix non renseignée : vérification impossible":"Vérification impossible depuis cette page",
       error:"Le serveur ne répond pas. Réessayez plus tard."}[s];
     if(m)toast(m);
@@ -1295,6 +1301,7 @@ function reopen(){var ds=document.querySelectorAll("details.card");ds.forEach(fu
 
 /* ---------- boucle ---------- */
 try{var stab=sessionStorage.getItem("thai26-tab");if(stab){UI.tab=stab;sessionStorage.removeItem("thai26-tab");}}catch(e){}
+try{var uprev=sessionStorage.getItem("thai26-updated");if(uprev!==null){sessionStorage.removeItem("thai26-updated");setTimeout(function(){toast(typeof BUILD!=="undefined"&&BUILD.t>+uprev?"Mise à jour installée · version "+BUILD.v:"La mise à jour ne s’est pas installée : réessayez avec « Vérifier les mises à jour »");},600);}}catch(e){}
 seedBudget(false);
 setTheme();
 checkReminders();
