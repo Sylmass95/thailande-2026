@@ -48,6 +48,9 @@ if (!/^Version /.test((d.querySelector("#tools-version") || {}).textContent || "
 click("[data-a=updcheck]");
 await new Promise((r) => setTimeout(r, 50));
 if (!/Réessayez|impossible|dernière version/.test(d.querySelector("#toast").textContent)) errors.push("le bouton « Vérifier les mises à jour » n’affiche pas de résultat");
+click("[data-a=minixtest]");
+await new Promise((r) => setTimeout(r, 50));
+if (!d.querySelector("#minix-test").textContent.trim()) errors.push("le bouton « Tester la connexion au Minix » n’affiche rien");
 // traduction : bouton Google en tête
 click("[data-a=tab][data-v=translate]");
 const first = d.querySelector("#view .card a");

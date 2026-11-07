@@ -314,7 +314,7 @@ function vTools(){
    +'<label style="display:block;margin-top:10px">Vitesse de la voix<select data-a="speed">'+[0.8,0.9,1,1.1,1.25].map(function(v){return '<option value="'+v+'"'+(S.set.speed===v?" selected":"")+'>'+(v===1?"Normale":"× "+String(v).replace(".",","))+'</option>';}).join("")+'</select></label>'
    +'<div class="row" style="margin-top:12px;justify-content:space-between"><div><b>Lecture automatique</b><p class="muted small">Démarre seule à l’arrivée sur un site, après une première lecture manuelle.</p></div><button class="btn '+(S.set.auto?"":"alt")+'" data-a="auto" aria-pressed="'+S.set.auto+'">'+(S.set.auto?"Activée":"Désactivée")+'</button></div>'
    +'<div class="row" style="margin-top:12px"><button class="btn alt" data-a="voicetest">Tester la voix</button></div><p class="muted small" style="margin-top:6px">'+vs+' Pour une voix hors ligne, installez la voix française dans les réglages du téléphone (synthèse vocale).</p>'
-   +'<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><b>Serveur Minix</b><p class="muted small">Adresse HTTPS du Minix, par exemple https://minix.xxxx.ts.net. Sert à l’assistant IA, à Tricount et aux mises à jour rapides de l’APK. Laissez vide dans l’app Claude et sur la page du Minix.</p><input type="url" data-a="aibase" placeholder="https://…" value="'+esc(S.set.aiBase||"")+'" style="margin-top:6px"><input type="password" data-a="aitoken" placeholder="Code d’accès (APP_TOKEN)" value="'+esc(S.set.aiToken||"")+'" style="margin-top:8px"><p class="muted small" id="minix-state" style="margin-top:6px">État : '+esc(minixState())+'</p>'
+   +'<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><b>Serveur Minix</b><p class="muted small">Adresse HTTPS du Minix, par exemple https://minix.xxxx.ts.net. Sert à l’assistant IA, à Tricount et aux mises à jour rapides de l’APK. Laissez vide dans l’app Claude et sur la page du Minix.</p><input type="url" data-a="aibase" placeholder="https://…" value="'+esc(S.set.aiBase||"")+'" style="margin-top:6px"><input type="password" data-a="aitoken" placeholder="Code d’accès (APP_TOKEN)" value="'+esc(S.set.aiToken||"")+'" style="margin-top:8px"><p class="muted small" id="minix-state" style="margin-top:6px">État : '+esc(minixState())+'</p><div class="row" style="margin-top:8px"><button class="btn alt" data-a="minixtest">Tester la connexion au Minix</button></div><div id="minix-test" class="small" style="margin-top:8px"></div>'
    +'<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><label>Simuler une date et une heure (heure de Thaïlande)<input type="datetime-local" id="sim" value="'+simValue()+'" data-a="sim"></label>'
    +'<div class="row" style="margin-top:10px"><button class="btn alt" data-a="simreset">Revenir à l’heure réelle</button><button class="btn alt" data-a="resetrem">Réinitialiser les rappels</button></div>'
    +'<p class="muted small" style="margin-top:10px">Utile pour tester l’application avant le départ.</p></div></details>';
@@ -586,6 +586,50 @@ function minixState(){
   if(AI.reach==="ok")return "Minix connecté (les mises à jour arrivent), mais assistant IA indisponible : "+(AI.needsToken?"code d’accès absent ou incorrect, ou ":"")+"clé API absente sur le Minix";
   if(aiBase())return "Minix injoignable"+(AI.err?" ("+AI.err+")":"")+". Vérifiez que l’adresse commence par https:// et finit par .ts.net, sans :8080, et que Tailscale est actif sur le téléphone";
   return "non disponible";
+}
+/* Bouton « Tester la connexion au Minix » : diagnostic pas à pas, affiché dans Réglages */
+function fetchT(u,o,ms){
+  var c=window.AbortController?new AbortController():null,tm=setTimeout(function(){if(c)c.abort();},ms);
+  return fetch(u,Object.assign({cache:"no-store"},o||{},c?{signal:c.signal}:{})).then(function(r){clearTimeout(tm);return r;},function(e){clearTimeout(tm);throw e;});
+}
+function netErr(e){
+  if(e&&e.name==="AbortError")return "pas de réponse en 10 secondes : Tailscale est-il connecté sur le téléphone ?";
+  if(e instanceof TypeError)return "connexion impossible : nom introuvable, Tailscale coupé sur le téléphone, tailscale serve arrêté sur le Minix ou adresse erronée"+(e.message?" (détail : "+e.message+")":"");
+  return (e&&e.message)||"erreur inconnue";
+}
+function minixTest(){
+  var out=$("#minix-test");if(!out)return;
+  var inp=document.querySelector('[data-a=aibase]'),raw=((inp&&inp.value)||S.set.aiBase||"").trim(),base=raw.replace(/\/+$/,""),L=[];
+  if(inp&&raw!==(S.set.aiBase||"")){S.set.aiBase=raw;save();}
+  var add=function(k,t){L.push([k,t]);show();};
+  var show=function(){out.innerHTML=L.map(function(l){var c=l[0]==="ko"?"var(--alert)":l[0]==="ok"?"var(--ink)":"var(--muted)";return '<p style="margin:4px 0;color:'+c+'"><b>'+({ok:"✓",ko:"✗",warn:"⚠",wait:"…"}[l[0]])+'</b> '+esc(l[1])+'</p>';}).join("")+(/^https?:\/\//.test(base)?'<p style="margin-top:6px"><a class="cp" href="'+esc(base)+'/api/health" target="_blank" rel="noopener">Ouvrir le test dans le navigateur</a></p>':'');};
+  if(!base){add("ko","Aucune adresse : collez l’adresse https://….ts.net du Minix ci-dessus.");return;}
+  var m=/^(https?):\/\/([^\/:]+)(:\d+)?(\/.*)?$/i.exec(base);
+  if(!m){add("ko","Adresse invalide : elle doit commencer par https:// (exemple : https://minix.tail1234.ts.net).");return;}
+  add(m[1].toLowerCase()==="https"?"ok":"ko","Adresse : "+base+(m[1].toLowerCase()==="https"?"":(NATIVE?" · l’APK refuse les adresses en http:// : utilisez l’adresse https://….ts.net donnée par « tailscale serve status » sur le Minix.":" · en http://, certaines fonctions ne marchent pas.")));
+  if(m[3])add("warn","L’adresse contient un port ("+m[3].slice(1)+") : avec tailscale serve, l’adresse https n’en a pas.");
+  if(!/\.ts\.net$/i.test(m[2]))add("warn","L’adresse ne finit pas par .ts.net : vérifiez-la avec « tailscale serve status » sur le Minix.");
+  if(m[4])add("warn","Retirez ce qui suit le nom ("+m[4]+") : seule l’adresse de base est attendue.");
+  if(navigator.onLine===false){add("ko","Le téléphone n’a pas de connexion internet.");return;}
+  add("wait","Test 1 sur 2 : lecture de la version publiée sur le Minix…");
+  var t0=Date.now();
+  fetchT(base+"/version.json",{},10000).then(function(r){
+    if(!r.ok)throw new Error("le Minix répond, mais avec l’erreur HTTP "+r.status+(r.status===503?" : l’app est en cours de construction, réessayez dans un instant":""));
+    return r.json().catch(function(){throw new Error("une réponse arrive, mais ce n’est pas le carnet de route : mauvaise adresse ?");});
+  }).then(function(j){
+    L.pop();
+    var mine=typeof BUILD!=="undefined"?BUILD:{v:"?",t:0};
+    add("ok","Minix joint en "+(Date.now()-t0)+" ms. Version publiée : "+j.v+", du "+fmt(new Date(j.t),TRIP_TZ,{day:"numeric",month:"long",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).replace(":"," h ")+".");
+    add(j.t>mine.t?"warn":"ok",j.t>mine.t?"Elle est plus récente que celle de l’app : touchez « Vérifier les mises à jour » en haut de Pratique.":"L’app est à jour.");
+    add("wait","Test 2 sur 2 : assistant IA et Tricount…");
+    return fetchT(base+"/api/health",{headers:aiHeaders()},10000).then(function(r){return r.json();}).then(function(h){
+      L.pop();
+      if(h.ai)add("ok","Assistant IA actif.");
+      else if(h.needsToken&&!h.tricount)add("warn","Assistant IA inactif : code d’accès absent ou incorrect (ou pas de clé API sur le Minix).");
+      else add("warn","Assistant IA inactif : pas de clé API sur le Minix.");
+      add(h.tricount?"ok":"warn",h.tricount?"Relais Tricount actif.":"Relais Tricount indisponible.");
+    },function(e){L.pop();add("warn","Le Minix répond, mais le test de l’assistant échoue : "+netErr(e));});
+  }).catch(function(e){L.pop();add("ko","Minix injoignable : "+netErr(e));}).then(function(){aiServer();});
 }
 function aiInit(){
   if(window.claude&&typeof window.claude.use==="function"){
@@ -1151,6 +1195,7 @@ document.addEventListener("click",function(e){
     case "cvq":UI.cv=v;render(true);break;
     case "updnow":updApply();break;
     case "updcheck":updCheckNow();break;
+    case "minixtest":minixTest();break;
     case "heardset":if(v==="1"){S.heard[id]=Date.now();toast("Archivé dans Écoutés");}else{delete S.heard[id];toast("Remis dans la liste");}save();if(UI.sheet)renderSheet();render(true);break;
     case "heardall":if(confirm("Remettre tous les guides écoutés dans la liste ?")){S.heard={};save();render(true);}break;
     case "propapply":var pm=AI.msgs[parseInt(b.getAttribute("data-i"),10)];if(pm&&pm.prop){try{progApply(pm.prop);pm.applied="ok";saveAi();toast("Programme mis à jour");}catch(err){toast(err.message);}render(true);}break;
