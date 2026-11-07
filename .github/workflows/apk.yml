@@ -22,8 +22,8 @@ jobs:
     steps:
       - uses: actions/cache/restore@v4
         with:
-          path: ~/.android/debug.keystore
-          key: android-debug-keystore-v1
+          path: ~/thai-signing/debug.keystore
+          key: android-debug-keystore-v2
 
   apk:
     if: github.event_name != 'schedule'
@@ -67,15 +67,35 @@ jobs:
       - name: Clé de signature conservée entre les compilations
         uses: actions/cache@v4
         with:
-          path: ~/.android/debug.keystore
-          key: android-debug-keystore-v1
+          path: ~/thai-signing/debug.keystore
+          key: android-debug-keystore-v2
+
+      - name: Créer la clé de signature si elle n’existe pas encore
+        run: |
+          mkdir -p ~/thai-signing
+          if [ ! -f ~/thai-signing/debug.keystore ]; then
+            keytool -genkeypair -v -keystore ~/thai-signing/debug.keystore -storepass android -keypass android \
+              -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            echo "Nouvelle clé créée (elle sera réutilisée par les prochaines compilations)."
+          else
+            echo "Clé existante réutilisée."
+          fi
 
       - name: Compiler
         working-directory: apk/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleDebug --no-daemon --stacktrace \
+            -Pandroid.injected.signing.store.file="$HOME/thai-signing/debug.keystore" \
+            -Pandroid.injected.signing.store.password=android \
+            -Pandroid.injected.signing.key.alias=androiddebugkey \
+            -Pandroid.injected.signing.key.password=android
           cp app/build/outputs/apk/debug/app-debug.apk ../../thailande-2026.apk
+
+      - name: Empreinte de la signature (doit rester identique d’une compilation à l’autre)
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs thailande-2026.apk | grep -i "SHA-256"
 
       - uses: actions/upload-artifact@v4
         with:
