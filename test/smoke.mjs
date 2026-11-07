@@ -40,6 +40,14 @@ click("[data-a=filter][data-v=heard]");
 if (count() !== 2) errors.push("la liste « Écoutés » devrait contenir 2 guides");
 click(`[data-a=heardset][data-id="${sites[0]}"]`);
 if (count() !== 1) errors.push("« Remettre dans la liste » ne fonctionne pas");
+// version de l’app : en bas d’Aujourd’hui, en haut de Pratique, bouton de vérification
+click("[data-a=tab][data-v=today]");
+if (!/^Version \S+ · publiée le .+ heure de Thaïlande$/.test((d.querySelector("#app-version") || {}).textContent || "")) errors.push("version absente en bas de l’onglet Aujourd’hui");
+click("[data-a=tab][data-v=tools]");
+if (!/^Version /.test((d.querySelector("#tools-version") || {}).textContent || "")) errors.push("version absente en haut de l’onglet Pratique");
+click("[data-a=updcheck]");
+await new Promise((r) => setTimeout(r, 50));
+if (!/Réessayez|impossible|dernière version/.test(d.querySelector("#toast").textContent)) errors.push("le bouton « Vérifier les mises à jour » n’affiche pas de résultat");
 // traduction : bouton Google en tête
 click("[data-a=tab][data-v=translate]");
 const first = d.querySelector("#view .card a");
