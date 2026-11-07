@@ -52,15 +52,15 @@ const DAYS = [
   ["15:00","Départ vers Wat Arun","Visite avant la fermeture, lumière de fin de journée. Épaules et genoux couverts.","visit","bkk-arun",null,null,"l-arun"],
   ["18:00","Dîner au bord du fleuve","Ou retour vers Khao San / Rambuttri.","meal"]
  ]),
- D(3,"07","Bangkok : Wat Arun puis Wat Pho (programme ajusté pluie)","Bangkok","bkk",
-  "Programme ajusté : Wat Arun d’abord, ses marches sont à faire au sec, puis Wat Pho, couvert, pendant la pluie. Si la pluie arrive plus tôt, inversez. Ce soir : confirmer le chauffeur d’Ayutthaya (départ 07 h 30 demain).",[
+ D(3,"07","Bangkok : Wat Arun puis Wat Pho (programme décalé)","Bangkok","bkk",
+  "Programme décalé d’environ deux heures et demie : bateau vers Wat Arun vers 11 h 55, puis Wat Pho l’après-midi, couvert en cas de pluie. Le déjeuner est tardif : prévoyez de l’eau et un en-cas. Ce soir : confirmer le chauffeur d’Ayutthaya (départ 07 h 30 demain).",[
   ["08:00","Petit-déjeuner autour de Rambuttri","","meal"],
-  ["09:15","Départ vers Wat Arun","Taxi, tuk-tuk ou bateau express : prix à vérifier ou à négocier avant de monter.","transport",null,null,null,"l-arun"],
-  ["09:45","Wat Arun","Montée du prang central, vue sur le fleuve. Épaules et genoux couverts. Entrée environ 200 THB (tarif relevé en 2026, à vérifier).","visit","bkk-arun"],
-  ["11:15","Petit bac vers Tha Tien","Quelques bahts.","transport"],
-  ["11:30","Déjeuner côté Tha Tien, dans un endroit couvert","Végétarien : « jay » ou « mangsawirat ».","meal"],
-  ["12:30","Wat Pho et Bouddha couché","Bouddha couché et galeries couvertes pendant la pluie. Massage possible sur place. Entrée environ 300 THB.","visit","bkk-pho"],
-  ["15:00","Option : retour à l’hôtel ou bateau dans les khlongs","Selon l’énergie et la météo. Tarif et durée à négocier avant d’embarquer.","visit","bkk-khlong"],
+  ["11:55","Bateau vers Wat Arun","Bateau sur le fleuve, puis petit bac si besoin. Prix à vérifier avant de monter.","transport",null,null,null,"l-arun"],
+  ["12:15","Wat Arun","Montée du prang central, vue sur le fleuve. Épaules et genoux couverts. Entrée environ 200 THB (tarif relevé en 2026, à vérifier). Eau et en-cas : le déjeuner est décalé.","visit","bkk-arun"],
+  ["13:30","Petit bac vers Tha Tien","Quelques bahts.","transport"],
+  ["13:45","Déjeuner côté Tha Tien, dans un endroit couvert","Végétarien : « jay » ou « mangsawirat ».","meal"],
+  ["14:45","Wat Pho et Bouddha couché","Bouddha couché et galeries couvertes en cas de pluie. Massage possible sur place. Entrée environ 300 THB. Fermeture vers 18 h 30, horaire à vérifier.","visit","bkk-pho"],
+  ["16:45","Option : massage, bateau dans les khlongs ou retour à l’hôtel","Selon l’énergie et la météo. Les tours des khlongs s’arrêtent souvent en fin d’après-midi : tarif, durée et dernier départ à vérifier avant d’embarquer.","visit","bkk-khlong"],
   ["18:30","Soirée libre","Marché, massage ou dîner tranquille. Confirmer le chauffeur d’Ayutthaya pour demain 07 h 30.","rest"]
  ]),
  D(4,"08","Ayutthaya → vol vers Chiang Mai","Ayutthaya / Chiang Mai","cm",
@@ -182,7 +182,8 @@ const REMINDERS = [
  R("r03","06","05:30","+07:00","Bangkok dans environ une heure","À l’arrivée : immigration, retrait d’espèces, SIM. Prévoir 500 THB de dépôt à l’hôtel."),
  R("r04","06","14:30","+07:00","Wat Arun à 15 h","Épaules et genoux couverts. Fermeture en fin de journée."),
  R("r05","07","08:45","+07:00","Départ vers Wat Arun à 09 h 15","Tenue couvrante, eau, chaussures qui ne glissent pas : les marches du prang se font au sec."),
- R("r05b","07","11:05","+07:00","Bac vers Tha Tien","Puis déjeuner à couvert et Wat Pho à 12 h 30 (environ 300 THB)."),
+ R("r05c","07","13:20","+07:00","Bac vers Tha Tien dans 10 minutes","Puis déjeuner à couvert et Wat Pho vers 14 h 45 (environ 300 THB)."),
+ R("r05d","07","16:30","+07:00","Fin de visite de Wat Pho","Massage, khlongs ou retour à l’hôtel : dernier départ des bateaux à vérifier."),
  R("r06","07","18:00","+07:00","Confirmer le chauffeur d’Ayutthaya","Départ demain 07 h 30 : bagages dans la voiture, plusieurs arrêts, dépose à Don Mueang."),
  R("r07","08","07:00","+07:00","Check-out Bangkok","Chauffeur à 07 h 30. Passeports et billets dans le sac de jour."),
  R("r08","08","15:45","+07:00","Départ impératif d’Ayutthaya à 16 h 15","Direction Don Mueang. Le vol décolle à 20 h 20."),
