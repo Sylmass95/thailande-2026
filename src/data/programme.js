@@ -64,7 +64,7 @@ const DAYS = [
   ["18:30","Soirée libre","Marché, massage ou dîner tranquille. Confirmer le chauffeur d’Ayutthaya pour demain 07 h 30.","rest"]
  ]),
  D(4,"08","Ayutthaya → vol vers Chiang Mai","Ayutthaya / Chiang Mai","cm",
-  "Départ impératif d’Ayutthaya à 16 h 15 pour le vol de 20 h 20. Bagages dans la voiture du chauffeur.",[
+  "Départ impératif d’Ayutthaya à 16 h 15 pour le vol de 20 h 20. Bagages dans la voiture du chauffeur. Prévoir de l’eau dans la voiture.",[
   ["07:30","Check-out, départ avec le chauffeur privé","Voiture avec coffre sécurisé toute la journée, dépose finale à Don Mueang.","transport","ayu-intro",null,null,"l-ayu-day"],
   ["09:15","Wat Mahathat","La tête de Bouddha dans les racines du banian.","visit","ayu-mahathat"],
   ["10:15","Wat Ratchaburana","Crypte du prang central. Escalier raide.","visit","ayu-ratchaburana"],
