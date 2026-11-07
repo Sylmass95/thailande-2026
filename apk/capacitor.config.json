@@ -1,0 +1,14 @@
+{
+  "appId": "fr.voyage.thailande2026",
+  "appName": "Thaïlande 2026",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#0B5A44"
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_thai",
+      "iconColor": "#0B5A44"
+    }
+  }
+}

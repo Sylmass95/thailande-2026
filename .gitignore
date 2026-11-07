@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-artifact/
+apk/node_modules/
+apk/android/
+apk/www/index.html
+deploy/.env
+deploy/.docker/
+*.log
+.DS_Store

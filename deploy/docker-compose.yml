@@ -1,0 +1,60 @@
+# Carnet de route Thaïlande 2026 sur le Minix.
+# Le service « updater » surveille GitHub toutes les 10 s, récupère le code, reconstruit la page
+# en quelques secondes, et ne reconstruit les conteneurs que si server/, tricount/ ou deploy/ changent.
+name: thailande
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:8080"            # changez le premier nombre si 8080 est déjà pris sur le Minix
+    environment:
+      - TRICOUNT_BRIDGE=http://tricount:8090
+      - WEB_ROOT=/repo/dist
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ${REPO_DIR:?REPO_DIR manquant dans deploy/.env}:/repo:ro
+    depends_on:
+      - tricount
+
+  tricount:
+    build: ../tricount
+    restart: unless-stopped
+    volumes:
+      - tricount-data:/data
+    env_file:
+      - path: .env
+        required: false
+
+  updater:
+    build:
+      context: .
+      dockerfile: updater.Dockerfile
+    restart: unless-stopped
+    environment:
+      - REPO_DIR=${REPO_DIR}
+      - GITHUB_REPO=${GITHUB_REPO}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - UPDATE_INTERVAL=${UPDATE_INTERVAL:-10}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${REPO_DIR}:${REPO_DIR}       # même chemin que sur le Minix (nécessaire pour docker compose)
+
+  # Optionnel : accès HTTPS depuis Internet via Cloudflare Tunnel (docker compose --profile tunnel up -d)
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    depends_on:
+      - app
+
+volumes:
+  tricount-data:
