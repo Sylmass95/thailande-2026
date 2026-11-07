@@ -314,7 +314,7 @@ function vTools(){
    +'<label style="display:block;margin-top:10px">Vitesse de la voix<select data-a="speed">'+[0.8,0.9,1,1.1,1.25].map(function(v){return '<option value="'+v+'"'+(S.set.speed===v?" selected":"")+'>'+(v===1?"Normale":"× "+String(v).replace(".",","))+'</option>';}).join("")+'</select></label>'
    +'<div class="row" style="margin-top:12px;justify-content:space-between"><div><b>Lecture automatique</b><p class="muted small">Démarre seule à l’arrivée sur un site, après une première lecture manuelle.</p></div><button class="btn '+(S.set.auto?"":"alt")+'" data-a="auto" aria-pressed="'+S.set.auto+'">'+(S.set.auto?"Activée":"Désactivée")+'</button></div>'
    +'<div class="row" style="margin-top:12px"><button class="btn alt" data-a="voicetest">Tester la voix</button></div><p class="muted small" style="margin-top:6px">'+vs+' Pour une voix hors ligne, installez la voix française dans les réglages du téléphone (synthèse vocale).</p>'
-   +'<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><b>Serveur Minix</b><p class="muted small">Adresse HTTPS du Minix'+(NATIVE?', préremplie : '+MINIX_DEFAULT+' (si vous videz le champ, elle est reprise par défaut)':', par exemple https://minix.xxxx.ts.net')+'. Sert à l’assistant IA, à Tricount et aux mises à jour rapides de l’APK. Laissez vide dans l’app Claude et sur la page du Minix.</p><input type="url" data-a="aibase" placeholder="https://…" value="'+esc(S.set.aiBase||minixDefault())+'" style="margin-top:6px"><input type="password" data-a="aitoken" placeholder="Code d’accès (APP_TOKEN)" value="'+esc(S.set.aiToken||"")+'" style="margin-top:8px"><p class="muted small" id="minix-state" style="margin-top:6px">État : '+esc(minixState())+'</p><div class="row" style="margin-top:8px"><button class="btn alt" data-a="minixtest">Tester la connexion au Minix</button></div><div id="minix-test" class="small" style="margin-top:8px"></div>'
+   +'<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><b>Serveur Minix</b><p class="muted small">Adresse HTTPS du Minix'+(NATIVE?', préremplie : '+MINIX_DEFAULT+' (si vous videz le champ, elle est reprise par défaut)':', par exemple https://minix.xxxx.ts.net')+'. Sert à l’assistant IA, à Tricount et aux mises à jour rapides de l’APK. Laissez vide dans l’app Claude et sur la page du Minix.</p><input type="url" data-a="aibase" placeholder="https://…" value="'+esc(S.set.aiBase||minixDefault())+'" style="margin-top:6px"><input type="password" data-a="aitoken" placeholder="Code d’accès (APP_TOKEN)" value="'+esc(S.set.aiToken||"")+'" style="margin-top:8px"><p class="muted small" id="minix-state" style="margin-top:6px">État : '+esc(minixState())+'</p><div class="row" style="margin-top:8px"><button class="btn alt" data-a="minixtest">Tester la connexion au Minix</button></div><div id="minix-test" class="small" style="margin-top:8px"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><b>Tricount</b><p class="muted small">Lien de partage du Tricount du voyage, prérempli. Pour en changer : dans Tricount, ouvrez le tricount, Partager, puis Copier le lien. Si vous videz le champ, le lien du voyage est repris.</p><input type="url" data-a="tclink" placeholder="https://tricount.com/…" value="'+esc(tcLink())+'" style="margin-top:6px">'
    +'<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><label>Simuler une date et une heure (heure de Thaïlande)<input type="datetime-local" id="sim" value="'+simValue()+'" data-a="sim"></label>'
    +'<div class="row" style="margin-top:10px"><button class="btn alt" data-a="simreset">Revenir à l’heure réelle</button><button class="btn alt" data-a="resetrem">Réinitialiser les rappels</button></div>'
    +'<p class="muted small" style="margin-top:10px">Utile pour tester l’application avant le départ.</p></div></details>';
@@ -501,6 +501,9 @@ function checkReminders(){
 /* ====== MODULES : CONVERTISSEUR, GRAB, TRADUCTION, TRICOUNT, ASSISTANT IA ====== */
 var TR_PLAY="https://play.google.com/store/apps/details?id=com.google.android.apps.translate";
 var TRICOUNT_PLAY="https://play.google.com/store/search?q=tricount&c=apps";
+/* Tricount du voyage, utilisé par défaut (modifiable dans Pratique → Réglages) */
+var TRICOUNT_DEFAULT="https://tricount.com/tAsDyFSCDVHlNSGfDs";
+function tcLink(){return S.set.tricount||TRICOUNT_DEFAULT;}
 function gTrans(text,sl,tl){return "https://translate.google.com/?sl="+sl+"&tl="+tl+"&text="+encodeURIComponent(text||"")+"&op=translate";}
 function nextLeg(){var t=nowMs();for(var i=0;i<ITEMS.length;i++){var it=ITEMS[i];if(it.ms>t-3600000&&it.leg&&LEGS[it.leg])return it;}return null;}
 function tonightHotel(){var d=currentDay();if(d&&d.sleep)return d.sleep;var t=nowMs();for(var i=0;i<DAYS.length;i++){if(Date.parse(DAYS[i].date+"T23:59:00+07:00")>t&&DAYS[i].sleep)return DAYS[i].sleep;}return null;}
@@ -551,7 +554,7 @@ function vTranslate(){
 
 /* ---------- Tricount ---------- */
 function vTricount(){
-  var link=S.set.tricount||"";
+  var link=tcLink();
   var h='<header class="top"><div><h1>Tricount</h1><p>Dépenses partagées du voyage</p></div></header>';
   h+='<div class="card"><h3>Notre Tricount</h3>'+(link?'<div class="row"><a class="btn" href="'+esc(link)+'" target="_blank" rel="noopener">Ouvrir notre Tricount</a><button class="cp" data-a="copy" data-v="'+esc(link)+'">Copier le lien</button></div>':'<p class="small">Collez ci-dessous le lien de partage de votre Tricount (dans l’appli : Partager → Copier le lien). Il s’ouvrira ensuite d’un seul geste.</p>')
    +'<label class="lbl" for="tc-link" style="margin-top:12px">Lien de partage</label><input type="url" id="tc-link" placeholder="https://tricount.com/…" value="'+esc(link)+'" data-a="tclink">'
@@ -577,7 +580,7 @@ function aiServer(){
   if(!base&&!(/^https?:$/.test(location.protocol)&&!NATIVE)){AI.mode="none";aiRerender();return;}
   try{
     AI.reach="pending";AI.err="";
-    fetch(base+"/api/health",{headers:aiHeaders()}).then(function(r){if(!r.ok)throw new Error("réponse HTTP "+r.status);return r.json().catch(function(){throw new Error("réponse inattendue : ce n’est pas le serveur du carnet");});}).then(function(j){AI.reach=j&&j.ok?"ok":"ko";AI.needsToken=!!(j&&j.needsToken);AI.mode=(j&&j.ai)?"server":"none";AI.web=!!(j&&j.web);AI.tc=!!(j&&j.tricount);if(AI.tc&&S.set.tricount&&(!S.tcSync||Date.now()-S.tcSync.at>900000))tcSync(true);}).catch(function(e){AI.mode="none";AI.reach="ko";AI.err=(e instanceof TypeError)?"aucune réponse":((e&&e.message)||"");}).then(function(){aiRerender();var st=document.getElementById("minix-state");if(st)st.textContent="État : "+minixState();});
+    fetch(base+"/api/health",{headers:aiHeaders()}).then(function(r){if(!r.ok)throw new Error("réponse HTTP "+r.status);return r.json().catch(function(){throw new Error("réponse inattendue : ce n’est pas le serveur du carnet");});}).then(function(j){AI.reach=j&&j.ok?"ok":"ko";AI.needsToken=!!(j&&j.needsToken);AI.mode=(j&&j.ai)?"server":"none";AI.web=!!(j&&j.web);AI.tc=!!(j&&j.tricount);if(AI.tc&&tcLink()&&(!S.tcSync||Date.now()-S.tcSync.at>900000))tcSync(true);}).catch(function(e){AI.mode="none";AI.reach="ko";AI.err=(e instanceof TypeError)?"aucune réponse":((e&&e.message)||"");}).then(function(){aiRerender();var st=document.getElementById("minix-state");if(st)st.textContent="État : "+minixState();});
   }catch(e){AI.mode="none";aiRerender();}
 }
 /* État lisible de la connexion au Minix (mises à jour) et de l’assistant IA */
@@ -879,7 +882,7 @@ function importCSV(text,defCur){
 /* ---------- page Tricount et budget ---------- */
 UI.expOpen=UI.expOpen||false;
 function vTricount2(){
-  var link=S.set.tricount||"",b=budgetStats(),B=S.budget||{};
+  var link=tcLink(),b=budgetStats(),B=S.budget||{};
   var h='<header class="top"><div><h1>Tricount et budget</h1><p>Dépenses partagées et suivi du budget</p></div></header>';
   /* tableau de bord */
   h+='<div class="card"><h3>Aujourd’hui</h3>';
@@ -1009,7 +1012,7 @@ function tcCat(x){
 }
 var TC={busy:false,err:""};
 function tcSync(silent){
-  var link=S.set.tricount||"";
+  var link=tcLink();
   if(!link){if(!silent)toast("Collez d’abord le lien de partage Tricount");return;}
   if(TC.busy)return;TC.busy=true;TC.err="";if(!silent)render(true);
   fetch(aiBase()+"/api/tricount?link="+encodeURIComponent(link),{headers:aiHeaders()}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j&&j.error||("HTTP "+r.status));return j;});})
@@ -1025,7 +1028,7 @@ function tcSync(silent){
 }
 function tcAvailable(){return !!AI.tc;}
 function vTricount2(){
-  var link=S.set.tricount||"",b=budgetStats(),B=S.budget||{},rate=S.set.rate||37.71;
+  var link=tcLink(),b=budgetStats(),B=S.budget||{},rate=S.set.rate||37.71;
   var h='<header class="top"><div><h1>Tricount et budget</h1><p>Dépenses partagées et suivi du budget</p></div></header>';
   /* synchro */
   h+='<div class="card"><h3>Synchronisation Tricount</h3>';
@@ -1035,8 +1038,7 @@ function vTricount2(){
   }else{
     h+='<p class="small">La lecture automatique de Tricount passe par l’API perso installée sur votre serveur Minix (version Docker). '+(NATIVE?'Dans l’APK, indiquez l’adresse du serveur dans Pratique → Réglages.':'Elle n’est pas disponible dans l’app Claude : utilisez la capture d’écran ci-dessous.')+'</p>';
   }
-  h+='<label class="lbl" for="tc-link" style="margin-top:10px">Lien de partage Tricount</label><input type="url" id="tc-link" placeholder="https://tricount.com/tXXXX" value="'+esc(link)+'" data-a="tclink"><p class="small muted" style="margin-top:6px">Dans Tricount : ouvrez le tricount, Partager, puis Copier le lien.</p>'
-   +'<div class="row" style="margin-top:8px"><button class="cp" data-a="tcshot">Capture Tricount → Assistant</button>'+(!link?'<a class="cp" href="'+TRICOUNT_PLAY+'" target="_blank" rel="noopener">Installer Tricount</a>':'')+'</div></div>';
+  h+='<div class="row" style="margin-top:8px"><button class="cp" data-a="tcshot">Capture Tricount → Assistant</button>'+(!link?'<a class="cp" href="'+TRICOUNT_PLAY+'" target="_blank" rel="noopener">Installer Tricount</a>':'')+'</div></div>';
   /* aujourd'hui */
   h+='<div class="card"><h3>Aujourd’hui</h3>';
   if(b.dailyB){var rest=b.dailyB-b.day;h+='<p class="bnum'+(rest<0?' over':'')+'">'+(rest>=0?'Reste '+eurTxt(rest):'Dépassé de '+eurTxt(-rest))+'</p><p class="small muted">'+eurTxt(b.day)+' dépensés sur '+eurTxt(b.dailyB)+' prévus (≈ '+thbTxt(b.day*rate)+' sur '+thbTxt(b.dailyB*rate)+')</p>'+bar(b.day,b.dailyB)+(b.dayBig?'<p class="small muted" style="margin-top:6px">Plus '+eurTxt(b.dayBig)+' de gros paiement(s) aujourd’hui (1 500 THB et plus : transferts, ATV…), comptés dans le total du voyage mais pas dans le budget du jour.</p>':'<p class="small muted" style="margin-top:6px">Les gros paiements (1 500 THB et plus : chauffeur, transferts, ATV) sont suivis dans le total du voyage, pas ici.</p>');}
@@ -1173,7 +1175,7 @@ document.addEventListener("click",function(e){
   var b=e.target.closest("[data-a]");if(!b)return;
   var a=b.getAttribute("data-a"),id=b.getAttribute("data-id"),v=b.getAttribute("data-v");
   switch(a){
-    case "tab":if(v==="tricount"&&AI.tc&&S.set.tricount&&(!S.tcSync||Date.now()-S.tcSync.at>600000))setTimeout(function(){tcSync(true);},50);UI.tab=v;if(UI.sheet){UI.sheet=null;renderSheet();}render();window.scrollTo(0,0);break;
+    case "tab":if(v==="tricount"&&AI.tc&&tcLink()&&(!S.tcSync||Date.now()-S.tcSync.at>600000))setTimeout(function(){tcSync(true);},50);UI.tab=v;if(UI.sheet){UI.sheet=null;renderSheet();}render();window.scrollTo(0,0);break;
     case "day":var n=parseInt(b.getAttribute("data-n"),10);UI.openDay=(UI.openDay===n)?null:n;render(true);break;
     case "done":S.done[id]=!S.done[id];save();render(true);break;
     case "ack":S.ack[id]=true;save();render(true);break;
@@ -1240,7 +1242,7 @@ document.addEventListener("change",function(e){
   if(a==="expcat"){S.exp.forEach(function(x){if(x.id===el.getAttribute("data-id")){x.cat=el.value;x.catUser=true;}});save();UI.expOpen=true;render(true);return;}
   if(a==="bud"){var k=el.getAttribute("data-k"),val=el.value===""?"":parseFloat(el.value);S.budget=S.budget||{};if(k.indexOf("cat:")===0){S.budget.cats=S.budget.cats||{};S.budget.cats[k.slice(4)]=val;}else S.budget[k]=val;save();render(true);return;}
   if(a==="csvfile"){var cfile=el.files&&el.files[0];if(!cfile)return;var rd=new FileReader();rd.onload=function(){var r=importCSV(String(rd.result||""),($("#csv-cur")||{}).value||"EUR");if(r.error)toast(r.error);else toast(r.added+" dépense(s) importée(s), "+r.skipped+" ignorée(s)");UI.expOpen=true;render(true);};rd.readAsText(cfile);return;}
-  if(a==="tclink"){S.set.tricount=el.value.trim();save();render(true);if(AI.tc&&S.set.tricount)tcSync(false);return;}
+  if(a==="tclink"){S.set.tricount=el.value.trim();save();S.tcSync=null;if(UI.tab==="tricount")render(true);if(AI.tc)tcSync(false);else toast("Lien Tricount enregistré");return;}
   if(a==="aibase"){S.set.aiBase=el.value.trim();save();AI.mode="pending";aiServer();return;}
   if(a==="aitoken"){S.set.aiToken=el.value.trim();save();if(aiBase()){AI.mode="pending";aiServer();}return;}
   if(a==="cash"){S.cash[el.getAttribute("data-id")]=el.checked;save();render(true);reopen();}
