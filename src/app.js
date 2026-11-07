@@ -625,7 +625,7 @@ function minixTest(){
   }).then(function(j){
     L.pop();
     var mine=typeof BUILD!=="undefined"?BUILD:{v:"?",t:0};
-    add("ok","Minix joint en "+(Date.now()-t0)+" ms. Version publiée : "+j.v+", du "+fmt(new Date(j.t),TRIP_TZ,{day:"numeric",month:"long",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).replace(":"," h ")+".");
+    add("ok","Minix joint en "+(Date.now()-t0)+" ms. Version publiée : "+verLabel(j)+", du "+fmt(new Date(j.t),TRIP_TZ,{day:"numeric",month:"long",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).replace(":"," h ")+".");
     add(j.t>mine.t?"warn":"ok",j.t>mine.t?"Elle est plus récente que celle de l’app : touchez « Vérifier les mises à jour » en haut de Pratique.":"L’app est à jour.");
     add("wait","Test 2 sur 2 : assistant IA et Tricount…");
     return fetchT(base+"/api/health",{headers:aiHeaders()},10000).then(function(r){return r.json();}).then(function(h){
@@ -1130,9 +1130,11 @@ function runningFromMinix(){
   if(!NATIVE||typeof BUILD==="undefined")return false;
   try{var el=document.getElementById("app-js"),m=el&&/BUILD=\{v:"[^"]*",t:(\d+)/.exec(el.textContent.slice(0,300));return !!m&&+m[1]!==BUILD.t;}catch(e){return false;}
 }
+/* « 1.31 (22fdf96ad9) » : numéro lisible et code exact de la version */
+function verLabel(o){o=o||(typeof BUILD!=="undefined"?BUILD:{});return o.n?o.n+" ("+o.v+")":(o.v||"?");}
 function versionText(){
   if(typeof BUILD==="undefined")return "";
-  var d=new Date(BUILD.t),txt="Version "+BUILD.v+" · publiée le "+fmt(d,TRIP_TZ,{day:"numeric",month:"long",year:"numeric"})+" à "+fmt(d,TRIP_TZ,{hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).replace(":"," h ")+", heure de Thaïlande";
+  var d=new Date(BUILD.t),txt="Version "+verLabel()+" · publiée le "+fmt(d,TRIP_TZ,{day:"numeric",month:"long",year:"numeric"})+" à "+fmt(d,TRIP_TZ,{hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).replace(":"," h ")+", heure de Thaïlande";
   if(NATIVE)txt+=runningFromMinix()?" · reçue du Minix":" · version d’origine de l’APK";
   return txt;
 }
@@ -1301,7 +1303,7 @@ function reopen(){var ds=document.querySelectorAll("details.card");ds.forEach(fu
 
 /* ---------- boucle ---------- */
 try{var stab=sessionStorage.getItem("thai26-tab");if(stab){UI.tab=stab;sessionStorage.removeItem("thai26-tab");}}catch(e){}
-try{var uprev=sessionStorage.getItem("thai26-updated");if(uprev!==null){sessionStorage.removeItem("thai26-updated");setTimeout(function(){toast(typeof BUILD!=="undefined"&&BUILD.t>+uprev?"Mise à jour installée · version "+BUILD.v:"La mise à jour ne s’est pas installée : réessayez avec « Vérifier les mises à jour »");},600);}}catch(e){}
+try{var uprev=sessionStorage.getItem("thai26-updated");if(uprev!==null){sessionStorage.removeItem("thai26-updated");setTimeout(function(){toast(typeof BUILD!=="undefined"&&BUILD.t>+uprev?"Mise à jour installée · version "+verLabel():"La mise à jour ne s’est pas installée : réessayez avec « Vérifier les mises à jour »");},600);}}catch(e){}
 seedBudget(false);
 setTheme();
 checkReminders();

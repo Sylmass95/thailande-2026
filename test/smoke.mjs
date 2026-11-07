@@ -42,7 +42,7 @@ click(`[data-a=heardset][data-id="${sites[0]}"]`);
 if (count() !== 1) errors.push("« Remettre dans la liste » ne fonctionne pas");
 // version de l’app : en bas d’Aujourd’hui, en haut de Pratique, bouton de vérification
 click("[data-a=tab][data-v=today]");
-if (!/^Version \S+ · publiée le .+ heure de Thaïlande$/.test((d.querySelector("#app-version") || {}).textContent || "")) errors.push("version absente en bas de l’onglet Aujourd’hui");
+if (!/^Version .+ · publiée le .+ heure de Thaïlande$/.test((d.querySelector("#app-version") || {}).textContent || "")) errors.push("version absente en bas de l’onglet Aujourd’hui");
 click("[data-a=tab][data-v=tools]");
 if (!/^Version /.test((d.querySelector("#tools-version") || {}).textContent || "")) errors.push("version absente en haut de l’onglet Pratique");
 click("[data-a=updcheck]");

@@ -31,6 +31,8 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # historique complet : numéro de version 1.<nombre de commits>
 
       - uses: actions/setup-node@v4
         with:
