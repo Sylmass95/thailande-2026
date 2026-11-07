@@ -96,10 +96,21 @@ async function tricount(req, res, url){
   } catch (e) { json(res, 502, {error:"Pont Tricount injoignable : " + e.message}); }
 }
 
+// État du serveur : code d’accès accepté ? relais Tricount configuré et vivant ?
+async function health(req, res){
+  const auth = authorized(req);
+  let up = null;
+  if (BRIDGE && auth) {
+    try { up = (await fetch(BRIDGE + "/health", {signal: AbortSignal.timeout(2500)})).ok; } catch (e) { up = false; }
+  }
+  json(res, 200, {ok:true, auth, needsToken:!!TOKEN, ai:!!KEY && auth, web:WEB,
+    tricount:!!BRIDGE && auth && up !== false, tricountConfigured:!!BRIDGE, tricountUp:up});
+}
+
 http.createServer((req, res) => {
   const url = new URL(req.url, "http://x");
   if (req.method === "OPTIONS") { cors(res); res.writeHead(204); return res.end(); }
-  if (url.pathname === "/api/health") return json(res, 200, {ok:true, ai:!!KEY && authorized(req), web:WEB, tricount:!!BRIDGE && authorized(req), needsToken:!!TOKEN});
+  if (url.pathname === "/api/health") return health(req, res);
   if (url.pathname === "/api/tricount" && req.method === "GET") return tricount(req, res, url);
   if (url.pathname === "/api/chat" && req.method === "POST") return chat(req, res);
   if (req.method !== "GET" && req.method !== "HEAD") { res.writeHead(405); return res.end(); }

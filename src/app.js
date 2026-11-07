@@ -580,7 +580,7 @@ function aiServer(cb){
   if(!base&&!(/^https?:$/.test(location.protocol)&&!NATIVE)){AI.mode="none";aiRerender();done();return;}
   try{
     AI.reach="pending";AI.err="";
-    fetch(base+"/api/health",{headers:aiHeaders()}).then(function(r){if(!r.ok)throw new Error("réponse HTTP "+r.status);return r.json().catch(function(){throw new Error("réponse inattendue : ce n’est pas le serveur du carnet");});}).then(function(j){AI.reach=j&&j.ok?"ok":"ko";AI.needsToken=!!(j&&j.needsToken);AI.mode=(j&&j.ai)?"server":"none";AI.web=!!(j&&j.web);AI.tc=!!(j&&j.tricount);if(AI.tc&&tcLink()&&(!S.tcSync||Date.now()-S.tcSync.at>900000))tcSync(true);}).catch(function(e){AI.mode="none";AI.reach="ko";AI.err=(e instanceof TypeError)?"aucune réponse":((e&&e.message)||"");}).then(function(){aiRerender();var st=document.getElementById("minix-state");if(st)st.textContent="État : "+minixState();done();});
+    fetch(base+"/api/health",{headers:aiHeaders()}).then(function(r){if(!r.ok)throw new Error("réponse HTTP "+r.status);return r.json().catch(function(){throw new Error("réponse inattendue : ce n’est pas le serveur du carnet");});}).then(function(j){AI.reach=j&&j.ok?"ok":"ko";AI.needsToken=!!(j&&j.needsToken);AI.auth=(j&&j.auth!==undefined)?!!j.auth:!(j&&j.needsToken&&!j.ai&&!j.tricount);AI.tcWhy=(j&&j.tricount)?"":!AI.auth?"token":(j&&j.tricountConfigured===false)?"config":(j&&j.tricountUp===false)?"down":"unknown";AI.mode=(j&&j.ai)?"server":"none";AI.web=!!(j&&j.web);AI.tc=!!(j&&j.tricount);if(AI.tc&&tcLink()&&(!S.tcSync||Date.now()-S.tcSync.at>900000))tcSync(true);}).catch(function(e){AI.mode="none";AI.reach="ko";AI.err=(e instanceof TypeError)?"aucune réponse":((e&&e.message)||"");}).then(function(){aiRerender();var st=document.getElementById("minix-state");if(st)st.textContent="État : "+minixState();done();});
   }catch(e){AI.mode="none";aiRerender();done();}
 }
 /* État lisible de la connexion au Minix (mises à jour) et de l’assistant IA */
@@ -630,10 +630,12 @@ function minixTest(){
     add("wait","Test 2 sur 2 : assistant IA et Tricount…");
     return fetchT(base+"/api/health",{headers:aiHeaders()},10000).then(function(r){return r.json();}).then(function(h){
       L.pop();
+      var auth=h.auth!==undefined?!!h.auth:!(h.needsToken&&!h.ai&&!h.tricount);
+      if(!auth)add("ko","Code d’accès manquant ou incorrect : saisissez-le ci-dessus (champ « Code d’accès »). Sans lui, l’assistant IA et Tricount sont refusés.");
       if(h.ai)add("ok","Assistant IA actif.");
-      else if(h.needsToken&&!h.tricount)add("warn","Assistant IA inactif : code d’accès absent ou incorrect (ou pas de clé API sur le Minix).");
-      else add("warn","Assistant IA inactif : pas de clé API sur le Minix.");
-      add(h.tricount?"ok":"warn",h.tricount?"Relais Tricount actif.":"Relais Tricount indisponible.");
+      else if(auth)add("warn","Assistant IA inactif : pas de clé API sur le Minix.");
+      if(h.tricount)add("ok","Relais Tricount actif.");
+      else if(auth)add("warn",h.tricountConfigured===false?"Relais Tricount non configuré sur le Minix.":h.tricountUp===false?"Relais Tricount arrêté ou en redémarrage sur le Minix : réessayez dans une minute.":"Relais Tricount indisponible.");
     },function(e){L.pop();add("warn","Le Minix répond, mais le test de l’assistant échoue : "+netErr(e));});
   }).catch(function(e){L.pop();add("ko","Minix injoignable : "+netErr(e));}).then(function(){aiServer();});
 }
@@ -1037,6 +1039,13 @@ function tcSync(silent,fresh,reset){
   .then(function(){TC.busy=false;if(UI.tab==="tricount")render(true);});
 }
 function tcAvailable(){return !!AI.tc;}
+/* Pourquoi Tricount n’est pas lisible, en clair */
+function tcWhyText(){
+  if(AI.reach!=="ok")return "Minix injoignable : vérifiez Tailscale, puis Pratique → Réglages → Tester la connexion.";
+  return {token:"Code d’accès manquant ou incorrect : saisissez le code d’accès (APP_TOKEN) dans Pratique → Réglages → Serveur Minix.",
+    config:"Le relais Tricount n’est pas configuré sur le Minix.",
+    down:"Le relais Tricount du Minix ne répond pas : il redémarre peut-être. Réessayez dans une minute."}[AI.tcWhy]||"Relais Tricount injoignable pour l’instant.";
+}
 /* un Minix peut lire Tricount : adresse renseignée (APK) ou page servie par le Minix (pas l’app Claude) */
 function tcPossible(){return !!aiBase()||(/^https?:$/.test(location.protocol)&&!NATIVE&&!window.claude);}
 /* bouton « Mettre à jour depuis Tricount » : reconnecte le Minix si besoin, puis relit Tricount */
@@ -1045,7 +1054,7 @@ function tcSyncNow(){
   toast("Connexion au Minix…");AI.mode="pending";if(UI.tab==="tricount")render(true);
   aiServer(function(){
     if(AI.tc)tcSync(false,true);
-    else{toast(AI.reach==="ok"?"Le Minix répond, mais le relais Tricount est indisponible : réessayez dans une minute":"Minix injoignable : vérifiez Tailscale, puis Pratique → Réglages → Tester la connexion");if(UI.tab==="tricount")render(true);}
+    else{toast(tcWhyText());if(UI.tab==="tricount")render(true);}
   });
 }
 /* Dernières dépenses lues dans Tricount, les nouvelles de la dernière synchronisation en tête */
@@ -1068,7 +1077,7 @@ function vTricount2(){
   /* synchro */
   h+='<div class="card"><h3>Synchronisation Tricount</h3>';
   if(tcPossible()){
-    if(!AI.tc&&AI.reach!=="pending"&&AI.mode!=="pending")h+='<p class="small" style="color:var(--alert);margin-bottom:8px">Relais Tricount injoignable pour l’instant : Minix hors de portée ou en cours de redémarrage. Touchez le bouton pour réessayer.</p>';
+    if(!AI.tc&&AI.reach!=="pending"&&AI.mode!=="pending")h+='<p class="small" style="color:var(--alert);margin-bottom:8px">'+esc(tcWhyText())+' Puis touchez le bouton pour réessayer.</p>';
     h+='<div class="row"><button class="btn" data-a="tcsync"'+(TC.busy?" disabled":"")+'>'+(TC.busy?"Lecture en cours…":"Mettre à jour depuis Tricount")+'</button>'+(link?'<a class="cp" href="'+esc(link)+'" target="_blank" rel="noopener">Ouvrir Tricount</a>':'')+'</div>';
     h+='<p class="small muted" style="margin-top:6px">'+(S.tcSync?'Dernière lecture : '+esc(cap(fmt(S.tcSync.at,TRIP_TZ,{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",hourCycle:"h23"})))+' · '+S.tcSync.n+' dépense(s) depuis le '+esc(tcFromTxt())+(S.tcSync.skip?' ('+S.tcSync.skip+' antérieure'+(S.tcSync.skip>1?'s':'')+' ignorée'+(S.tcSync.skip>1?'s':'')+')':'')+(S.tcSync.title?' · « '+esc(S.tcSync.title)+' »':''):'Jamais synchronisé.')+(TC.err?'<br><span style="color:var(--alert)">'+esc(TC.err)+'</span>':'')+'</p>';
   }else{
