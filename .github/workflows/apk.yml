@@ -34,8 +34,9 @@ jobs:
         run: |
           npm ci
           npm run build
+          mkdir -p apk/www/icons
           cp dist/apk.html apk/www/index.html
-          mkdir -p apk/www/icons && cp dist/icons/* apk/www/icons/
+          cp dist/icons/* apk/www/icons/
 
       - name: Générer le projet Android
         working-directory: apk
