@@ -15,7 +15,13 @@ function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
 /* ---------- pont natif Android (Capacitor) ---------- */
 var CAPW=window.Capacitor||null;
 var NATIVE=!!(CAPW&&CAPW.isNativePlatform&&CAPW.isNativePlatform());
-function plug(n){try{return NATIVE&&CAPW.registerPlugin?CAPW.registerPlugin(n):null;}catch(e){return null;}}
+function plug(n){
+  if(!NATIVE)return null;
+  try{if(CAPW.registerPlugin)return CAPW.registerPlugin(n);if(CAPW.Plugins&&CAPW.Plugins[n])return CAPW.Plugins[n];}catch(e){}
+  /* repli : appel direct du pont natif */
+  if(CAPW.nativePromise&&window.Proxy)return new Proxy({},{get:function(t,m){return m==="then"?undefined:function(o){return CAPW.nativePromise(n,m,o||{});};}});
+  return null;
+}
 var LN=plug("LocalNotifications"),TTSN=plug("TextToSpeech"),APPN=plug("App");
 var NAT={perm:"",exact:"",pending:null,error:""};
 function nid(i){return 1000+i;}
@@ -308,12 +314,13 @@ function vTools(){
   h+='</div></details>';
   h+='<div class="card"><div class="row" style="justify-content:space-between"><div><b>Convertisseur baht / euro</b><p class="muted small">Maintenant dans le menu du bas.</p></div><button class="btn alt" data-a="tab" data-v="convert">Ouvrir</button></div></div>';
   /* réglages */
-  var vs="speechSynthesis" in window?"Voix du téléphone disponible.":"Voix non disponible sur ce navigateur.";
+  var vs=NATIVE?(TTSN?esc(VOICE.state||"Voix Android : vérification…"):"Voix Android indisponible : module de synthèse vocale absent de l’APK."):("speechSynthesis" in window?"Voix du téléphone disponible.":"Voix non disponible sur ce navigateur.");
+  if(NATIVE&&TTSN&&!VOICE.checked)voiceCheck();
   h+='<details class="card"><summary>Réglages</summary><div>'
    +'<label>Apparence<select data-a="theme"><option value="auto"'+(S.set.theme==="auto"?" selected":"")+'>Automatique</option><option value="light"'+(S.set.theme==="light"?" selected":"")+'>Clair</option><option value="dark"'+(S.set.theme==="dark"?" selected":"")+'>Sombre</option></select></label>'
    +'<label style="display:block;margin-top:10px">Vitesse de la voix<select data-a="speed">'+[0.8,0.9,1,1.1,1.25].map(function(v){return '<option value="'+v+'"'+(S.set.speed===v?" selected":"")+'>'+(v===1?"Normale":"× "+String(v).replace(".",","))+'</option>';}).join("")+'</select></label>'
    +'<div class="row" style="margin-top:12px;justify-content:space-between"><div><b>Lecture automatique</b><p class="muted small">Démarre seule à l’arrivée sur un site, après une première lecture manuelle.</p></div><button class="btn '+(S.set.auto?"":"alt")+'" data-a="auto" aria-pressed="'+S.set.auto+'">'+(S.set.auto?"Activée":"Désactivée")+'</button></div>'
-   +'<div class="row" style="margin-top:12px"><button class="btn alt" data-a="voicetest">Tester la voix</button></div><p class="muted small" style="margin-top:6px">'+vs+' Pour une voix hors ligne, installez la voix française dans les réglages du téléphone (synthèse vocale).</p>'
+   +'<div class="row" style="margin-top:12px"><button class="btn alt" data-a="voicetest">Tester la voix</button>'+(NATIVE&&TTSN?'<button class="btn alt" data-a="voiceinstall">Installer la voix française</button>':'')+'</div><p class="muted small" style="margin-top:6px"><span id="voice-state">'+vs+'</span> Pour une voix hors ligne, installez la voix française dans les réglages du téléphone (synthèse vocale).</p>'
    +'<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><b>Serveur Minix</b><p class="muted small">Adresse HTTPS du Minix'+(NATIVE?', préremplie : '+MINIX_DEFAULT+' (si vous videz le champ, elle est reprise par défaut)':', par exemple https://minix.xxxx.ts.net')+'. Sert à l’assistant IA, à Tricount et aux mises à jour rapides de l’APK. Laissez vide dans l’app Claude et sur la page du Minix.</p><input type="url" data-a="aibase" placeholder="https://…" value="'+esc(S.set.aiBase||minixDefault())+'" style="margin-top:6px"><input type="password" data-a="aitoken" placeholder="Code d’accès (APP_TOKEN)" value="'+esc(S.set.aiToken||"")+'" style="margin-top:8px"><p class="muted small" id="minix-state" style="margin-top:6px">État : '+esc(minixState())+'</p><div class="row" style="margin-top:8px"><button class="btn alt" data-a="minixtest">Tester la connexion au Minix</button></div><div id="minix-test" class="small" style="margin-top:8px"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><b>Tricount</b><p class="muted small">Lien de partage du Tricount du voyage, prérempli. Pour en changer : dans Tricount, ouvrez le tricount, Partager, puis Copier le lien. Si vous videz le champ, le lien du voyage est repris.</p><input type="url" data-a="tclink" placeholder="https://tricount.com/…" value="'+esc(tcLink())+'" style="margin-top:6px"><label style="display:block;margin-top:10px">Compter les dépenses Tricount à partir du<input type="date" data-a="tcfrom" value="'+esc(tcFrom())+'" style="margin-top:6px"></label><p class="muted small" style="margin-top:4px">Les dépenses plus anciennes, comme les réservations faites avant le départ, sont ignorées. Par défaut : 5 novembre 2026.</p>'
    +'<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><label>Simuler une date et une heure (heure de Thaïlande)<input type="datetime-local" id="sim" value="'+simValue()+'" data-a="sim"></label>'
    +'<div class="row" style="margin-top:10px"><button class="btn alt" data-a="simreset">Revenir à l’heure réelle</button><button class="btn alt" data-a="resetrem">Réinitialiser les rappels</button></div>'
@@ -374,6 +381,19 @@ function pickVoice(){
 if(synth&&synth.addEventListener){synth.addEventListener("voiceschanged",function(){voiceCache=null;});}
 function sentences(t){return t.match(/[^.!?…]+[.!?…]+["»”]?|\S[^.!?…]*$/g)||[t];}
 function buildQueue(chs){var q=[];chs.forEach(function(c,ci){var intro=c.t?c.t+". ":"";sentences(c.x).forEach(function(sn,k){q.push({text:(k===0?intro:"")+sn.trim(),c:ci});});});return q;}
+/* Voix Android (plugin TextToSpeech) : français disponible ? */
+var VOICE={checked:false,state:"",ok:null};
+function voiceCheck(){
+  VOICE.checked=true;
+  var show=function(t,ok){VOICE.state=t;VOICE.ok=ok;var el=document.getElementById("voice-state");if(el)el.textContent=t;};
+  try{TTSN.isLanguageSupported({lang:"fr-FR"}).then(function(r){
+    show(r&&r.supported?"Voix Android disponible en français.":"Voix française absente du téléphone : touchez « Installer la voix française », ou Réglages Android → Synthèse vocale → moteur Google, langue Français.",!!(r&&r.supported));
+  },function(e){show("Voix Android indisponible : "+((e&&e.message)||e)+". Vérifiez Réglages Android → Synthèse vocale (moteur Google, langue Français).",false);});}catch(e){show("Voix Android indisponible.",false);}
+}
+function voiceErr(e){
+  var m=((e&&e.message)||String(e||"")).replace(/[.\s]+$/,"");
+  toast(/not implemented|not available/i.test(m)?"Voix Android indisponible : module de synthèse vocale absent de l’APK":"Voix Android : "+(m||"erreur")+". Vérifiez Pratique → Réglages → Installer la voix française");
+}
 function speakNative(i){
   var my=++tok;TTS.i=i;
   if(i>=TTS.q.length){TTS.playing=false;TTS.paused=false;releaseWake();if(i>0)markHeard(TTS.siteId);uiAudio();return;}
@@ -387,7 +407,7 @@ function speakNative(i){
         if(k+1>=TTS.q.length){TTS.playing=false;TTS.paused=false;releaseWake();markHeard(TTS.siteId);}
         else{TTS.chap=TTS.q[k+1].c;}
         uiAudio();
-      }).catch(function(){});
+      }).catch(function(e){if(my!==tok||k!==i)return;tok++;TTS.playing=false;TTS.paused=true;releaseWake();uiAudio();voiceErr(e);});
     })(k);}
   };
   takeWake();uiAudio();
@@ -395,7 +415,7 @@ function speakNative(i){
 }
 function speakAt(i){
   if(NATIVE&&TTSN)return speakNative(i);
-  if(!synth){toast("Voix indisponible sur ce navigateur");return;}
+  if(!synth){toast(NATIVE?"Voix Android indisponible : module de synthèse vocale absent de l’APK":"Voix indisponible sur ce navigateur");return;}
   var busy=synth.speaking||synth.pending;
   tok++;var my=tok;TTS.i=i;
   if(busy)synth.cancel();
@@ -1284,6 +1304,7 @@ document.addEventListener("click",function(e){
     case "aicopy":var m2=AI.msgs[parseInt(b.getAttribute("data-i"),10)];if(m2)copy(m2.content);break;
     case "driver":showDriver(b.getAttribute("data-k"));break;
     case "closedriver":$("#driver").className="";break;
+    case "voiceinstall":if(TTSN)TTSN.openInstall().catch(function(e){toast("Ouvrez Réglages Android → Synthèse vocale : "+((e&&e.message)||"installation impossible"));});break;
     case "voicetest":if(!synth&&!(NATIVE&&TTSN)){toast("Voix indisponible");break;}TTS.q=[];startQueue({title:"Test de la voix",sub:""},[{t:"",x:"Bonjour ! Ceci est le guide audio de votre voyage en Thaïlande. Bon voyage !"}],0);break;
     case "simreset":S.set.offset=0;save();render(true);break;
     case "resetrem":S.fired={};S.ack={};save();checkReminders();if(NATIVE)scheduleAll();render(true);toast("Rappels réinitialisés");break;
