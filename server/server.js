@@ -65,8 +65,10 @@ async function chat(req, res){
   if (body.image && body.image.data && /^image\/(jpeg|png|webp|gif)$/.test(body.image.media_type || "")) {
     last.content = [{type:"image", source:{type:"base64", media_type:body.image.media_type, data:body.image.data}}, {type:"text", text:last.content}];
   }
-  const tools = (WEB && body.web) ? [{type:"web_search_20250305", name:"web_search", max_uses:4,
-    user_location:{type:"approximate", country:"TH", timezone:"Asia/Bangkok", ...(body.city ? {city:String(body.city).slice(0, 60)} : {})}}] : undefined;
+  // Recherche web localisée sur la ville du jour. Pas de code pays : l’API refuse « TH » (Country code TH is not supported).
+  let tools = (WEB && body.web) ? [{type:"web_search_20250305", name:"web_search", max_uses:4,
+    user_location:{type:"approximate", timezone:"Asia/Bangkok", ...(body.city ? {city:String(body.city).slice(0, 60)} : {})}}] : undefined;
+  let retries = 0;
   let conversation = merged, text = "";
   try {
     for (let round = 0; round < 3; round++) {
@@ -76,7 +78,17 @@ async function chat(req, res){
         body:JSON.stringify({model:MODEL, max_tokens:2000, system:String(body.system || "").slice(0, 120000), messages:conversation, ...(tools ? {tools} : {})})
       });
       const j = await r.json();
-      if (!r.ok) return json(res, 502, {error:(j && j.error && j.error.message) || ("API " + r.status)});
+      if (!r.ok) {
+        const msg = (j && j.error && j.error.message) || ("API " + r.status);
+        // Repli si la recherche web est refusée : d’abord sans localisation, puis sans recherche web.
+        if (r.status === 400 && tools && retries < 2 && /web_search|user_location|country|tools\./i.test(msg)) {
+          retries++;
+          if (tools[0].user_location) { const t = {...tools[0]}; delete t.user_location; tools = [t]; } else tools = undefined;
+          console.log("Recherche web refusée (" + msg + ") : nouvel essai " + (tools ? "sans localisation" : "sans recherche web"));
+          round--; continue;
+        }
+        return json(res, 502, {error:msg});
+      }
       text += (j.content || []).filter(b => b.type === "text").map(b => b.text).join("");
       if (j.stop_reason === "pause_turn") { conversation = conversation.concat([{role:"assistant", content:j.content}]); continue; }
       break;
