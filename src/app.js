@@ -1091,9 +1091,44 @@ function tcRecentHtml(){
   });
   return h+'<p class="small muted" style="margin-top:6px">'+list.length+' dépense(s) lue(s) dans Tricount. La liste complète est dans « Dépenses enregistrées », plus bas.</p></div>';
 }
+/* ---------- détail des dépenses par jour ---------- */
+function catName(c){var x=CATS.filter(function(k){return k[0]===c;})[0];return x?x[1]:"Autre";}
+function dayLabel(date){var d=DAYS.filter(function(x){return x.date===date;})[0];return cap(fmt(Date.parse(date+"T12:00:00+07:00"),TRIP_TZ,{weekday:"short",day:"numeric",month:"short"}))+(d?" · J"+d.n+" · "+d.city:"");}
+function expRow(e){
+  var rate=S.set.rate||37.71,hr=/\d{2}:\d{2}$/.test(e.when||"")?e.when.slice(11).replace(":"," h "):"",big=toEur(e)*rate>=BIG_THB;
+  var info=[hr,e.payer,catName(e.cat)+(big?" · gros paiement":"")].filter(Boolean).join(" · ");
+  return '<div class="kv"><span><b>'+esc(e.title)+'</b><br><span class="small muted">'+esc(info)+'</span></span><span style="text-align:right;flex:none"><b>'+(e.cur==="EUR"?eurTxt(e.amt):thbTxt(e.amt))+'</b><br><span class="small muted">'+(e.cur==="EUR"?thbTxt(e.amt*rate):eurTxt(toEur(e)))+'</span></span></div>';
+}
+function dayExps(date){return expActive().filter(function(e){return !e.pre&&e.date===date;}).sort(function(a,b){var ka=a.when||"",kb=b.when||"";return ka<kb?1:ka>kb?-1:0;});}
+function catLine(list){var c={};list.forEach(function(e){c[e.cat]=(c[e.cat]||0)+toEur(e);});var k=Object.keys(c).sort(function(a,b){return c[b]-c[a];});return k.length>1?'<p class="small muted" style="margin-top:6px">'+k.map(function(x){return esc(catName(x))+" "+eurTxt(c[x]);}).join(" · ")+'</p>':"";}
+function todayExpHtml(today){
+  var list=dayExps(today);
+  if(!list.length)return '<p class="small muted" style="margin-top:8px">Aucune dépense enregistrée aujourd’hui pour l’instant.</p>';
+  return '<div style="margin-top:10px">'+list.map(expRow).join("")+'</div>'+catLine(list);
+}
+function dayExpHtml(){
+  var rate=S.set.rate||37.71,by={},today=dateKey(nowMs(),TRIP_TZ),dailyB=budgetStats().dailyB;
+  expActive().forEach(function(e){if(!e.pre&&e.date)(by[e.date]=by[e.date]||[]).push(e);});
+  var dates=Object.keys(by).filter(function(d){return d<=today;}).sort().reverse();
+  if(!dates.length)return "";
+  var h='<div class="card"><h3>Dépenses par jour</h3>';
+  dates.forEach(function(d){
+    var list=dayExps(d),tot=0,small=0;list.forEach(function(e){var v=toEur(e);tot+=v;if(v*rate<BIG_THB)small+=v;});
+    var over=dailyB&&small>dailyB+0.005;
+    h+='<details class="dayexp" style="border-top:1px solid var(--line);padding:6px 0"><summary style="cursor:pointer;display:flex;justify-content:space-between;gap:8px"><span><b>'+esc(dayLabel(d))+'</b>'+(d===today?' · aujourd’hui':'')+'<br><span class="small muted">'+list.length+' dépense'+(list.length>1?'s':'')+'</span></span><span style="text-align:right;flex:none"><b'+(over?' style="color:var(--alert)"':'')+'>'+eurTxt(tot)+'</b><br><span class="small muted">'+thbTxt(tot*rate)+'</span></span></summary>'
+      +'<div style="margin-top:6px">'+list.map(expRow).join("")+catLine(list)+(dailyB?'<p class="small muted" style="margin-top:6px">Hors gros paiements : '+eurTxt(small)+' sur '+eurTxt(dailyB)+' prévus par jour.</p>':'')+'</div></details>';
+  });
+  return h+'</div>';
+}
 function vTricount2(){
   var link=tcLink(),b=budgetStats(),B=S.budget||{},rate=S.set.rate||37.71;
   var h='<header class="top"><div><h1>Tricount et budget</h1><p>Dépenses partagées et suivi du budget</p></div></header>';
+  /* aujourd'hui */
+  h+='<div class="card"><h3>Aujourd’hui</h3>';
+  if(b.dailyB){var rest=b.dailyB-b.day;h+='<p class="bnum'+(rest<0?' over':'')+'">'+(rest>=0?'Reste '+eurTxt(rest):'Dépassé de '+eurTxt(-rest))+'</p><p class="small muted">'+eurTxt(b.day)+' dépensés sur '+eurTxt(b.dailyB)+' prévus (≈ '+thbTxt(b.day*rate)+' sur '+thbTxt(b.dailyB*rate)+')</p>'+bar(b.day,b.dailyB)+(b.dayBig?'<p class="small muted" style="margin-top:6px">Plus '+eurTxt(b.dayBig)+' de gros paiement(s) aujourd’hui (1 500 THB et plus : transferts, ATV…), comptés dans le total du voyage mais pas dans le budget du jour.</p>':'<p class="small muted" style="margin-top:6px">Les gros paiements (1 500 THB et plus : chauffeur, transferts, ATV) sont suivis dans le total du voyage, pas ici.</p>');}
+  else h+='<p class="small">'+eurTxt(b.day)+' dépensés aujourd’hui.</p>';
+  h+=todayExpHtml(b.today);
+  h+='</div>';
   /* synchro */
   h+='<div class="card"><h3>Synchronisation Tricount</h3>';
   if(tcPossible()){
@@ -1105,11 +1140,7 @@ function vTricount2(){
   }
   h+='<div class="row" style="margin-top:8px"><button class="cp" data-a="tcshot">Capture Tricount → Assistant</button>'+(!link?'<a class="cp" href="'+TRICOUNT_PLAY+'" target="_blank" rel="noopener">Installer Tricount</a>':'')+'</div></div>';
   h+=tcRecentHtml();
-  /* aujourd'hui */
-  h+='<div class="card"><h3>Aujourd’hui</h3>';
-  if(b.dailyB){var rest=b.dailyB-b.day;h+='<p class="bnum'+(rest<0?' over':'')+'">'+(rest>=0?'Reste '+eurTxt(rest):'Dépassé de '+eurTxt(-rest))+'</p><p class="small muted">'+eurTxt(b.day)+' dépensés sur '+eurTxt(b.dailyB)+' prévus (≈ '+thbTxt(b.day*rate)+' sur '+thbTxt(b.dailyB*rate)+')</p>'+bar(b.day,b.dailyB)+(b.dayBig?'<p class="small muted" style="margin-top:6px">Plus '+eurTxt(b.dayBig)+' de gros paiement(s) aujourd’hui (1 500 THB et plus : transferts, ATV…), comptés dans le total du voyage mais pas dans le budget du jour.</p>':'<p class="small muted" style="margin-top:6px">Les gros paiements (1 500 THB et plus : chauffeur, transferts, ATV) sont suivis dans le total du voyage, pas ici.</p>');}
-  else h+='<p class="small">'+eurTxt(b.day)+' dépensés aujourd’hui.</p>';
-  h+='</div>';
+  h+=dayExpHtml();
   /* voyage */
   h+='<div class="card"><h3>Tout le voyage</h3>';
   if(b.left!=null){
