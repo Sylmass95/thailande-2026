@@ -668,7 +668,7 @@ function aiInit(){
   }else aiServer();
 }
 var AI_RULES=[
-"Tu es l’assistant de voyage et le guide personnel de deux voyageurs français en road trip en Thaïlande, du 5 au 19 novembre 2026. Une des deux personnes mange végétarien.",
+"Tu es l’assistant de voyage et le guide personnel de deux voyageurs français en road trip en Thaïlande, du 5 au 19 novembre 2026.",
 "Réponds toujours en français, de façon chaleureuse, concrète et concise : on te lit sur un téléphone. Utilise le contexte du voyage fourni (programme, hôtels, heure actuelle, position) pour personnaliser chaque réponse.",
 "PHOTOS : si une photo est jointe, identifie le lieu ou le bâtiment si tu le peux, en disant ton degré de certitude. Explique le style (thaï de Rattanakosin, Ayutthaya, khmer, Lanna, sino-portugais…), les éléments visibles (prang, chedi, ubosot, naga, garuda, chofa…), leur symbolique, l’histoire et les règles de respect. Sur un menu ou un panneau, traduis et explique.",
 "AUDIO GUIDE : quand on te demande un audio guide, une narration ou de raconter un lieu, écris un texte fluide destiné à être lu à voix haute, de 300 à 600 mots, sans titre, sans liste, sans markdown, sans emoji, avec des repères concrets du type « regardez sur votre droite ».",
@@ -676,7 +676,7 @@ var AI_RULES=[
 "FAITS ET PRIX : n’invente rien. Si tu ne sais pas, dis-le. Les prix sont des estimations à vérifier sur place.",
 "FORMAT hors audio guide : paragraphes courts ; listes avec « - » autorisées ; gras avec ** pour les noms de lieux ; pas de tableau."
 ];
-function aiRestRule(){return AI.mode==="server"&&AI.web?"RESTAURANTS ET INFOS RÉCENTES : tu peux utiliser la recherche web. Pour des restaurants, cherche près de la position GPS fournie et donne pour chacun le nom, la distance approximative à pied, la spécialité à commander, une option végétarienne, la fourchette de prix et les horaires si tu les trouves.":"RESTAURANTS ET INFOS RÉCENTES : tu n’as pas accès à internet ni aux avis en temps réel. Propose ce que tu connais avec prudence (adresses réputées, rues ou marchés connus, plats typiques du quartier), dis clairement que c’est à vérifier, et rappelle le bouton « Restaurants autour » qui ouvre Google Maps.";}
+function aiRestRule(){return AI.mode==="server"&&AI.web?"RESTAURANTS ET INFOS RÉCENTES : tu peux utiliser la recherche web. Pour des restaurants, cherche près de la position GPS fournie et donne pour chacun le nom, la distance approximative à pied, la spécialité à commander, la fourchette de prix et les horaires si tu les trouves.":"RESTAURANTS ET INFOS RÉCENTES : tu n’as pas accès à internet ni aux avis en temps réel. Propose ce que tu connais avec prudence (adresses réputées, rues ou marchés connus, plats typiques du quartier), dis clairement que c’est à vérifier, et rappelle le bouton « Restaurants autour » qui ouvre Google Maps.";}
 function tripContext(){
   var t=nowMs(),d=currentDay(),L=[];
   L.push("Date et heure actuelles en Thaïlande : "+cap(longDate(t,TRIP_TZ))+", "+hm(t,TRIP_TZ)+(S.set.offset?" (heure simulée)":"")+".");
@@ -707,7 +707,7 @@ function aiPlain(s){return s.replace(/\*\*/g,"").replace(/^#+\s*/gm,"").replace(
 function mapsRestaurants(){return POS?"https://www.google.com/maps/search/restaurants/@"+POS.lat.toFixed(5)+","+POS.lng.toFixed(5)+",17z":"https://www.google.com/maps/search/?api=1&query="+encodeURIComponent("restaurants à proximité");}
 var AI_CHIPS=[
  ["photo","Analyser une photo","Qu’est-ce que c’est ? Raconte-nous l’histoire de ce lieu et ce qu’il faut regarder.",false],
- ["resto","Restaurants autour de nous","Trouve-nous les meilleurs restaurants autour de notre position actuelle, à moins de dix minutes à pied, avec un plat à commander et une option végétarienne.",false],
+ ["resto","Restaurants autour de nous","Trouve-nous les meilleurs restaurants autour de notre position actuelle, à moins de dix minutes à pied, avec un plat à commander pour chacun.",false],
  ["audio","Audio guide de l’endroit","Fais-nous un audio guide personnalisé de l’endroit où nous sommes en ce moment, d’après notre position et notre programme.",true],
  ["now","Que faire maintenant ?","Qu’est-ce qu’on fait maintenant et ensuite ? Rappelle les points d’attention, ce qu’il faut avoir sur soi et les horaires à ne pas manquer.",false],
  ["tomorrow","Programme de demain","Résume notre programme de demain, avec les horaires, ce qu’il faut préparer ce soir et l’argent liquide à prévoir.",false],

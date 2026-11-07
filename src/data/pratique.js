@@ -53,7 +53,6 @@ const THAI = [
  ["Non merci","mai ao khrap / kha"],
  ["Pas piquant","mai phet"],
  ["Un peu piquant","phet noï"],
- ["Je mange végétarien","kin jay"],
  ["L’addition","chek bin"],
  ["Toilettes ?","hong nam yu tï nai ?"],
  ["Au compteur, s’il vous plaît","meter khrap / kha"],

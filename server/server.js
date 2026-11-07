@@ -69,14 +69,15 @@ async function chat(req, res){
   let tools = (WEB && body.web) ? [{type:"web_search_20250305", name:"web_search", max_uses:4,
     user_location:{type:"approximate", timezone:"Asia/Bangkok", ...(body.city ? {city:String(body.city).slice(0, 60)} : {})}}] : undefined;
   let retries = 0;
-  let conversation = merged, text = "";
+  let conversation = merged, text = "", stop = "";
+  const ask = (msgs, withTools, extra) => fetch("https://api.anthropic.com/v1/messages", {
+    method:"POST",
+    headers:{"x-api-key":KEY, "anthropic-version":"2023-06-01", "content-type":"application/json"},
+    body:JSON.stringify({model:MODEL, max_tokens:4096, system:String(body.system || "").slice(0, 120000) + (extra || ""), messages:msgs, ...(withTools && tools ? {tools} : {})})
+  });
   try {
-    for (let round = 0; round < 3; round++) {
-      const r = await fetch("https://api.anthropic.com/v1/messages", {
-        method:"POST",
-        headers:{"x-api-key":KEY, "anthropic-version":"2023-06-01", "content-type":"application/json"},
-        body:JSON.stringify({model:MODEL, max_tokens:2000, system:String(body.system || "").slice(0, 120000), messages:conversation, ...(tools ? {tools} : {})})
-      });
+    for (let round = 0; round < 6; round++) {
+      const r = await ask(conversation, true);
       const j = await r.json();
       if (!r.ok) {
         const msg = (j && j.error && j.error.message) || ("API " + r.status);
@@ -90,11 +91,21 @@ async function chat(req, res){
         return json(res, 502, {error:msg});
       }
       text += (j.content || []).filter(b => b.type === "text").map(b => b.text).join("");
-      if (j.stop_reason === "pause_turn") { conversation = conversation.concat([{role:"assistant", content:j.content}]); continue; }
+      stop = j.stop_reason || "";
+      if (stop === "pause_turn") { conversation = conversation.concat([{role:"assistant", content:j.content}]); continue; }
       break;
     }
+    // Réponse vide (recherche web interrompue, limite atteinte…) : nouvel essai sans recherche web.
+    if (!text.trim()) {
+      console.log("Réponse vide (stop_reason : " + stop + ") : nouvel essai sans recherche web");
+      const r = await ask(merged, false, "\n\nRéponds directement, sans recherche web, avec ce que tu sais.");
+      const j = await r.json();
+      if (r.ok) text = (j.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+      stop = (j && j.stop_reason) || stop;
+    }
   } catch (e) { return json(res, 502, {error:"Connexion à l’API impossible : " + e.message}); }
-  json(res, 200, {text:text || "(réponse vide)"});
+  if (!text.trim()) return json(res, 502, {error:"Réponse vide de l’API (" + (stop || "raison inconnue") + "). Réessayez ou reformulez."});
+  json(res, 200, {text});
 }
 
 async function tricount(req, res, url){
