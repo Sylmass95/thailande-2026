@@ -1011,22 +1011,39 @@ function tcCat(x){
   return guessCat(t,"");
 }
 var TC={busy:false,err:""};
-function tcSync(silent){
+function tcSync(silent,fresh){
   var link=tcLink();
   if(!link){if(!silent)toast("Collez d’abord le lien de partage Tricount");return;}
   if(TC.busy)return;TC.busy=true;TC.err="";if(!silent)render(true);
-  fetch(aiBase()+"/api/tricount?link="+encodeURIComponent(link),{headers:aiHeaders()}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j&&j.error||("HTTP "+r.status));return j;});})
+  fetch(aiBase()+"/api/tricount?link="+encodeURIComponent(link)+(fresh?"&fresh=1":""),{headers:aiHeaders()}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j&&j.error||("HTTP "+r.status));return j;});})
   .then(function(j){
-    var prev={};S.exp.forEach(function(e){if(e.tid)prev[e.tid]=e;});
+    var prev={},first=!S.exp.some(function(e){return e.tid;});S.exp.forEach(function(e){if(e.tid)prev[e.tid]=e;});
+    var added=(j.expenses||[]).filter(function(x){return !prev[x.tid];});
     S.exp=S.exp.filter(function(e){return !e.tid;});
     (j.expenses||[]).forEach(function(x){var p=prev[x.tid];var cur=/^(THB|EUR)$/.test(x.cur)?x.cur:(/^(THB|EUR)$/.test(x.cur_tricount)?x.cur_tricount:"EUR");var amt=cur===x.cur?x.amt:x.amt_tricount;
-      S.exp.push({id:"t"+x.tid,tid:x.tid,date:/^\d{4}-\d{2}-\d{2}$/.test(x.date)?x.date:dateKey(nowMs(),TRIP_TZ),title:x.title,amt:amt,cur:cur,cat:(p&&p.catUser)?p.cat:tcCat(x),catUser:!!(p&&p.catUser),payer:x.payer||"",src:"tricount"});});
+      S.exp.push({id:"t"+x.tid,tid:x.tid,date:/^\d{4}-\d{2}-\d{2}$/.test(x.date)?x.date:dateKey(nowMs(),TRIP_TZ),title:x.title,amt:amt,cur:cur,cat:(p&&p.catUser)?p.cat:tcCat(x),catUser:!!(p&&p.catUser),payer:x.payer||"",src:"tricount",when:x.when||""});});
+    if(!first&&added.length)S.tcNew={at:Date.now(),ids:added.map(function(x){return x.tid;})};
     S.tcSync={at:Date.now(),title:j.title||"",n:(j.expenses||[]).length,currency:j.currency||""};save();
-    if(!silent)toast((j.expenses||[]).length+" dépense(s) lue(s) dans Tricount");
+    var nt=first?"":added.length?added.length+(added.length>1?" nouvelles dépenses":" nouvelle dépense")+" : "+added.slice(0,3).map(function(x){return x.title;}).join(", "):"Aucune nouvelle dépense dans Tricount";
+    if(!silent)toast(first?(j.expenses||[]).length+" dépense(s) lue(s) dans Tricount":nt);else if(added.length&&!first)toast("Tricount · "+nt);
   },function(e){TC.err=(e&&e.message)||"erreur";if(!silent)toast("Tricount : "+TC.err);})
   .then(function(){TC.busy=false;if(UI.tab==="tricount")render(true);});
 }
 function tcAvailable(){return !!AI.tc;}
+/* Dernières dépenses lues dans Tricount, les nouvelles de la dernière synchronisation en tête */
+function tcRecentHtml(){
+  var list=S.exp.filter(function(e){return e.src==="tricount";});
+  if(!list.length)return "";
+  var nw=(S.tcNew&&Date.now()-S.tcNew.at<86400000)?S.tcNew.ids:[];
+  list.forEach(function(e,i){e._i=i;});
+  list.sort(function(a,b){var na=nw.indexOf(a.tid)>=0,nb=nw.indexOf(b.tid)>=0;if(na!==nb)return na?-1:1;var ka=a.when||a.date,kb=b.when||b.date;return ka<kb?1:ka>kb?-1:b._i-a._i;});
+  var h='<div class="card"><h3>Dernières dépenses Tricount</h3>';
+  list.slice(0,6).forEach(function(e){
+    var isNew=nw.indexOf(e.tid)>=0,hr=/\d{2}:\d{2}$/.test(e.when||"")?" à "+e.when.slice(11).replace(":"," h "):"";
+    h+='<div class="kv"><span><b>'+esc(e.title)+'</b>'+(isNew?' <span class="small" style="background:var(--sign);color:var(--sign-ink);border-radius:6px;padding:1px 6px">nouveau</span>':'')+'<br><span class="small muted">'+esc(cap(fmt(Date.parse(e.date+"T12:00:00+07:00"),TRIP_TZ,{weekday:"short",day:"numeric",month:"short"})))+esc(hr)+(e.payer?' · '+esc(e.payer):'')+'</span></span><b style="text-align:right;flex:none">'+(e.cur==="EUR"?eurTxt(e.amt):thbTxt(e.amt))+'</b></div>';
+  });
+  return h+'<p class="small muted" style="margin-top:6px">'+list.length+' dépense(s) lue(s) dans Tricount. La liste complète est dans « Dépenses enregistrées », plus bas.</p></div>';
+}
 function vTricount2(){
   var link=tcLink(),b=budgetStats(),B=S.budget||{},rate=S.set.rate||37.71;
   var h='<header class="top"><div><h1>Tricount et budget</h1><p>Dépenses partagées et suivi du budget</p></div></header>';
@@ -1039,6 +1056,7 @@ function vTricount2(){
     h+='<p class="small">La lecture automatique de Tricount passe par l’API perso installée sur votre serveur Minix (version Docker). '+(NATIVE?'Dans l’APK, indiquez l’adresse du serveur dans Pratique → Réglages.':'Elle n’est pas disponible dans l’app Claude : utilisez la capture d’écran ci-dessous.')+'</p>';
   }
   h+='<div class="row" style="margin-top:8px"><button class="cp" data-a="tcshot">Capture Tricount → Assistant</button>'+(!link?'<a class="cp" href="'+TRICOUNT_PLAY+'" target="_blank" rel="noopener">Installer Tricount</a>':'')+'</div></div>';
+  h+=tcRecentHtml();
   /* aujourd'hui */
   h+='<div class="card"><h3>Aujourd’hui</h3>';
   if(b.dailyB){var rest=b.dailyB-b.day;h+='<p class="bnum'+(rest<0?' over':'')+'">'+(rest>=0?'Reste '+eurTxt(rest):'Dépassé de '+eurTxt(-rest))+'</p><p class="small muted">'+eurTxt(b.day)+' dépensés sur '+eurTxt(b.dailyB)+' prévus (≈ '+thbTxt(b.day*rate)+' sur '+thbTxt(b.dailyB*rate)+')</p>'+bar(b.day,b.dailyB)+(b.dayBig?'<p class="small muted" style="margin-top:6px">Plus '+eurTxt(b.dayBig)+' de gros paiement(s) aujourd’hui (1 500 THB et plus : transferts, ATV…), comptés dans le total du voyage mais pas dans le budget du jour.</p>':'<p class="small muted" style="margin-top:6px">Les gros paiements (1 500 THB et plus : chauffeur, transferts, ATV) sont suivis dans le total du voyage, pas ici.</p>');}
@@ -1175,7 +1193,7 @@ document.addEventListener("click",function(e){
   var b=e.target.closest("[data-a]");if(!b)return;
   var a=b.getAttribute("data-a"),id=b.getAttribute("data-id"),v=b.getAttribute("data-v");
   switch(a){
-    case "tab":if(v==="tricount"&&AI.tc&&tcLink()&&(!S.tcSync||Date.now()-S.tcSync.at>600000))setTimeout(function(){tcSync(true);},50);UI.tab=v;if(UI.sheet){UI.sheet=null;renderSheet();}render();window.scrollTo(0,0);break;
+    case "tab":if(v==="tricount"&&AI.tc&&tcLink()&&(!S.tcSync||Date.now()-S.tcSync.at>60000))setTimeout(function(){tcSync(true);},50);UI.tab=v;if(UI.sheet){UI.sheet=null;renderSheet();}render();window.scrollTo(0,0);break;
     case "day":var n=parseInt(b.getAttribute("data-n"),10);UI.openDay=(UI.openDay===n)?null:n;render(true);break;
     case "done":S.done[id]=!S.done[id];save();render(true);break;
     case "ack":S.ack[id]=true;save();render(true);break;
@@ -1211,7 +1229,7 @@ document.addEventListener("click",function(e){
     case "expadd":var am=parseFloat(($("#ex-amt")||{}).value);if(!(am>0)){toast("Indiquez un montant");break;}var tt=(($("#ex-title")||{}).value||"").trim()||"Dépense";var cc=($("#ex-cat")||{}).value;expAdd([{amt:am,cur:($("#ex-cur")||{}).value,title:tt,cat:cc,date:($("#ex-date")||{}).value}],"manuel");toast("Dépense ajoutée");render(true);break;
     case "expdel":S.exp=S.exp.filter(function(e){return e.id!==id;});save();UI.expOpen=true;render(true);break;
     case "expclear":if(confirm("Effacer toutes les dépenses enregistrées ?")){S.exp=[];save();render(true);}break;
-    case "tcsync":tcSync(false);break;
+    case "tcsync":tcSync(false,true);break;
     case "budscen":applyScenario(v);toast(v==="max"?"Répartition 4 400 € appliquée":"Répartition 4 000 € appliquée");render(true);break;
     case "budseed":if(confirm("Remplacer le budget par les valeurs du roadbook ?")){seedBudget(true);toast("Budget du roadbook rechargé");render(true);}break;
     case "csvpick":var cf=$("#csv-file");if(cf)cf.click();break;
@@ -1283,7 +1301,7 @@ setInterval(function(){
     if(!(active&&/INPUT|SELECT|TEXTAREA/.test(active.tagName)))render(true);
   }else if(ch&&UI.tab==="remind"){render(true);}
 },20000);
-document.addEventListener("visibilitychange",function(){if(!document.hidden){checkReminders();if(UI.tab==="today")render(true);updCheck();}});
+document.addEventListener("visibilitychange",function(){if(!document.hidden){checkReminders();if(UI.tab==="today")render(true);if(UI.tab==="tricount"&&AI.tc&&(!S.tcSync||Date.now()-S.tcSync.at>60000))tcSync(true);updCheck();}});
 setInterval(function(){updCheck();},NATIVE?30000:15000);setTimeout(function(){updCheck();},3000);
 try{if(!NATIVE&&"serviceWorker" in navigator&&/^https?:$/.test(location.protocol)){navigator.serviceWorker.register("sw.js").catch(function(){});}}catch(e){}
 })();

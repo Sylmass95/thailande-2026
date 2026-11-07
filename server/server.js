@@ -90,7 +90,7 @@ async function tricount(req, res, url){
   if (!authorized(req)) return json(res, 401, {error:"Code d’accès invalide."});
   const link = url.searchParams.get("link") || "";
   try {
-    const r = await fetch(BRIDGE + "/expenses?link=" + encodeURIComponent(link), {signal: AbortSignal.timeout(30000)});
+    const r = await fetch(BRIDGE + "/expenses?link=" + encodeURIComponent(link) + (url.searchParams.get("fresh") === "1" ? "&fresh=1" : ""), {signal: AbortSignal.timeout(30000)});
     const j = await r.json();
     json(res, r.status, j);
   } catch (e) { json(res, 502, {error:"Pont Tricount injoignable : " + e.message}); }

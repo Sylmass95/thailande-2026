@@ -76,6 +76,7 @@ def normalize(raw):
         out.append({
             "tid": tx.uuid,
             "date": (tx.date or "")[:10],
+            "when": (tx.date or "")[:16],
             "title": tx.description or "Dépense",
             "amt": round(amt, 2),
             "cur": cur,
@@ -110,9 +111,10 @@ class Handler(BaseHTTPRequestHandler):
         token = token_from((q.get("link") or q.get("token") or [DEFAULT_LINK])[0])
         if not token:
             return self._send(400, {"error": "Lien Tricount invalide : il doit ressembler à https://tricount.com/tXXXX"})
+        fresh = (q.get("fresh") or ["0"])[0] == "1"  # synchronisation demandée à la main : relire Tricount
         with _lock:
             hit = _cache.get(token)
-            if hit and time.time() - hit[0] < CACHE_SECONDS:
+            if hit and time.time() - hit[0] < (5 if fresh else CACHE_SECONDS):
                 return self._send(200, hit[1])
             try:
                 data = normalize(fetch_raw(token))
