@@ -187,6 +187,8 @@ function vToday(){
   }else if(t<ITEMS[0].ms){
     h+='<div class="card"><h3>Départ</h3><p>Tout le roadbook est dans l’application, même sans réseau. Ouvrez la page une fois avec une connexion, puis ajoutez-la à l’écran d’accueil.</p></div>';
   }
+  var vt=versionText();
+  if(vt)h+='<p class="muted" id="app-version" style="font-size:12px;text-align:center;margin:18px 2px 4px">'+esc(vt)+'</p>';
   return h;
 }
 function vTrip(){
@@ -265,6 +267,9 @@ function vRemind(){
 }
 function vTools(){
   var h='<header class="top"><div><h1>Pratique</h1><p>Tout ce qu’il faut sous la main</p></div></header>';
+  /* version de l’app */
+  var vt=versionText();
+  h+='<div class="card"><p class="small muted" id="tools-version">'+esc(vt||"Version inconnue")+'</p><div class="row" style="margin-top:8px"><button class="btn alt" data-a="updcheck">Vérifier les mises à jour</button></div></div>';
   /* trajets */
   var tt=legTotal();
   h+='<details class="card"><summary>Trajets et budget transport</summary><div><p class="muted small" style="margin-bottom:6px">Total estimé pour deux, options recommandées : <b style="color:var(--ink)">'+tt[0].toLocaleString("fr-FR")+' à '+tt[1].toLocaleString("fr-FR")+' THB</b> (≈ '+eur(tt[0])+' à '+eur(tt[1])+' €). Certains transferts sont peut-être déjà réservés ou inclus dans vos forfaits.</p>';
@@ -1030,21 +1035,53 @@ function updReady(t){
   var p=$("#prompt");if(p.className==="on")return;
   p.className="on";p.innerHTML='<div class="pr-in"><b>Nouvelle version de l’app disponible</b><span class="small">Elle s’installe en un instant.</span><div class="row"><button class="btn" data-a="updnow">Mettre à jour</button><button class="btn alt" data-a="dismissprompt">Plus tard</button></div></div>';
 }
-function updCheck(){
-  if(document.hidden||navigator.onLine===false||typeof BUILD==="undefined")return;
+/* APK : la version qui tourne vient-elle du Minix (app-bundle.json) ou de l’APK installé ? */
+function runningFromMinix(){
+  if(!NATIVE||typeof BUILD==="undefined")return false;
+  try{var el=document.getElementById("app-js"),m=el&&/BUILD=\{v:"[^"]*",t:(\d+)/.exec(el.textContent.slice(0,300));return !!m&&+m[1]!==BUILD.t;}catch(e){return false;}
+}
+function versionText(){
+  if(typeof BUILD==="undefined")return "";
+  var d=new Date(BUILD.t),txt="Version "+BUILD.v+" · publiée le "+fmt(d,TRIP_TZ,{day:"numeric",month:"long",year:"numeric"})+" à "+fmt(d,TRIP_TZ,{hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).replace(":"," h ")+", heure de Thaïlande";
+  if(NATIVE)txt+=runningFromMinix()?" · reçue du Minix":" · version d’origine de l’APK";
+  return txt;
+}
+/* cb (facultatif) reçoit : "new", "none", "offline", "unavailable" ou "error" */
+function updCheck(cb){
+  var done=function(s){if(cb)cb(s);};
+  if(!cb&&document.hidden)return;
+  if(navigator.onLine===false)return done("offline");
+  if(typeof BUILD==="undefined")return done("unavailable");
+  var getJ=function(u){return fetch(u,{cache:"no-store"}).then(function(r){return r.ok?r.json():null;});};
   try{
     if(NATIVE){
-      var base=aiBase();if(!base)return;
-      fetch(base+"/version.json",{cache:"no-store"}).then(function(r){return r.ok?r.json():null;}).then(function(j){
-        if(!j||!(j.t>Math.max(BUILD.t,liveT())))return null;
-        return fetch(base+"/app-bundle.json",{cache:"no-store"}).then(function(r){return r.ok?r.json():null;}).then(function(b){
-          if(b&&b.t===j.t&&b.js){localStorage.setItem("thai26-live",JSON.stringify(b));updReady(b.t);}
+      if(cb&&liveT()>BUILD.t){updReady(liveT());return done("new");}
+      var base=aiBase();if(!base)return done("unavailable");
+      getJ(base+"/version.json").then(function(j){
+        if(!j)return "error";
+        if(!(j.t>Math.max(BUILD.t,liveT())))return "none";
+        return getJ(base+"/app-bundle.json").then(function(b){
+          if(b&&b.t===j.t&&b.js){localStorage.setItem("thai26-live",JSON.stringify(b));updReady(b.t);return "new";}
+          return "error";
         });
-      }).catch(function(){});
+      }).then(done,function(){done("error");});
     }else if(!window.claude&&/^https?:$/.test(location.protocol)){
-      fetch("version.json",{cache:"no-store"}).then(function(r){return r.ok?r.json():null;}).then(function(j){if(j&&j.t>BUILD.t)updReady(j.t);}).catch(function(){});
-    }
-  }catch(e){}
+      getJ("version.json").then(function(j){
+        if(!j)return "error";
+        if(j.t>BUILD.t){updReady(j.t);return "new";}
+        return "none";
+      }).then(done,function(){done("error");});
+    }else done("unavailable");
+  }catch(e){done("error");}
+}
+function updCheckNow(){
+  toast("Recherche d’une nouvelle version…");
+  updCheck(function(s){
+    var m={none:"Vous avez la dernière version",new:"Nouvelle version disponible",offline:"Pas de connexion : vérification impossible",
+      unavailable:NATIVE?"Adresse du Minix non renseignée : vérification impossible":"Vérification impossible depuis cette page",
+      error:"Le serveur ne répond pas. Réessayez plus tard."}[s];
+    if(m)toast(m);
+  });
 }
 
 /* ---------- affichage ---------- */
@@ -1102,6 +1139,7 @@ document.addEventListener("click",function(e){
     case "copy":copy(v);break;
     case "cvq":UI.cv=v;render(true);break;
     case "updnow":updApply();break;
+    case "updcheck":updCheckNow();break;
     case "heardset":if(v==="1"){S.heard[id]=Date.now();toast("Archivé dans Écoutés");}else{delete S.heard[id];toast("Remis dans la liste");}save();if(UI.sheet)renderSheet();render(true);break;
     case "heardall":if(confirm("Remettre tous les guides écoutés dans la liste ?")){S.heard={};save();render(true);}break;
     case "propapply":var pm=AI.msgs[parseInt(b.getAttribute("data-i"),10)];if(pm&&pm.prop){try{progApply(pm.prop);pm.applied="ok";saveAi();toast("Programme mis à jour");}catch(err){toast(err.message);}render(true);}break;
@@ -1185,6 +1223,6 @@ setInterval(function(){
   }else if(ch&&UI.tab==="remind"){render(true);}
 },20000);
 document.addEventListener("visibilitychange",function(){if(!document.hidden){checkReminders();if(UI.tab==="today")render(true);updCheck();}});
-setInterval(updCheck,NATIVE?30000:15000);setTimeout(updCheck,3000);
+setInterval(function(){updCheck();},NATIVE?30000:15000);setTimeout(function(){updCheck();},3000);
 try{if(!NATIVE&&"serviceWorker" in navigator&&/^https?:$/.test(location.protocol)){navigator.serviceWorker.register("sw.js").catch(function(){});}}catch(e){}
 })();
