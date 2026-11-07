@@ -314,7 +314,7 @@ function vTools(){
    +'<label style="display:block;margin-top:10px">Vitesse de la voix<select data-a="speed">'+[0.8,0.9,1,1.1,1.25].map(function(v){return '<option value="'+v+'"'+(S.set.speed===v?" selected":"")+'>'+(v===1?"Normale":"× "+String(v).replace(".",","))+'</option>';}).join("")+'</select></label>'
    +'<div class="row" style="margin-top:12px;justify-content:space-between"><div><b>Lecture automatique</b><p class="muted small">Démarre seule à l’arrivée sur un site, après une première lecture manuelle.</p></div><button class="btn '+(S.set.auto?"":"alt")+'" data-a="auto" aria-pressed="'+S.set.auto+'">'+(S.set.auto?"Activée":"Désactivée")+'</button></div>'
    +'<div class="row" style="margin-top:12px"><button class="btn alt" data-a="voicetest">Tester la voix</button></div><p class="muted small" style="margin-top:6px">'+vs+' Pour une voix hors ligne, installez la voix française dans les réglages du téléphone (synthèse vocale).</p>'
-   +'<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><b>Serveur Minix</b><p class="muted small">Adresse HTTPS du Minix, par exemple https://minix.xxxx.ts.net. Sert à l’assistant IA, à Tricount et aux mises à jour rapides de l’APK. Laissez vide dans l’app Claude et sur la page du Minix.</p><input type="url" data-a="aibase" placeholder="https://…" value="'+esc(S.set.aiBase||"")+'" style="margin-top:6px"><input type="password" data-a="aitoken" placeholder="Code d’accès (APP_TOKEN)" value="'+esc(S.set.aiToken||"")+'" style="margin-top:8px"><p class="muted small" style="margin-top:6px">État : '+({claude:"Claude (app Claude)",server:"serveur connecté",none:"non disponible",pending:"connexion…"}[AI.mode]||"")+'</p>'
+   +'<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><b>Serveur Minix</b><p class="muted small">Adresse HTTPS du Minix, par exemple https://minix.xxxx.ts.net. Sert à l’assistant IA, à Tricount et aux mises à jour rapides de l’APK. Laissez vide dans l’app Claude et sur la page du Minix.</p><input type="url" data-a="aibase" placeholder="https://…" value="'+esc(S.set.aiBase||"")+'" style="margin-top:6px"><input type="password" data-a="aitoken" placeholder="Code d’accès (APP_TOKEN)" value="'+esc(S.set.aiToken||"")+'" style="margin-top:8px"><p class="muted small" id="minix-state" style="margin-top:6px">État : '+esc(minixState())+'</p>'
    +'<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><label>Simuler une date et une heure (heure de Thaïlande)<input type="datetime-local" id="sim" value="'+simValue()+'" data-a="sim"></label>'
    +'<div class="row" style="margin-top:10px"><button class="btn alt" data-a="simreset">Revenir à l’heure réelle</button><button class="btn alt" data-a="resetrem">Réinitialiser les rappels</button></div>'
    +'<p class="muted small" style="margin-top:10px">Utile pour tester l’application avant le départ.</p></div></details>';
@@ -573,8 +573,19 @@ function aiServer(){
   var base=aiBase();
   if(!base&&!(/^https?:$/.test(location.protocol)&&!NATIVE)){AI.mode="none";aiRerender();return;}
   try{
-    fetch(base+"/api/health",{headers:aiHeaders()}).then(function(r){return r.json();}).then(function(j){AI.mode=(j&&j.ai)?"server":"none";AI.web=!!(j&&j.web);AI.tc=!!(j&&j.tricount);if(AI.tc&&S.set.tricount&&(!S.tcSync||Date.now()-S.tcSync.at>900000))tcSync(true);}).catch(function(){AI.mode="none";}).then(aiRerender);
+    AI.reach="pending";AI.err="";
+    fetch(base+"/api/health",{headers:aiHeaders()}).then(function(r){if(!r.ok)throw new Error("réponse HTTP "+r.status);return r.json().catch(function(){throw new Error("réponse inattendue : ce n’est pas le serveur du carnet");});}).then(function(j){AI.reach=j&&j.ok?"ok":"ko";AI.needsToken=!!(j&&j.needsToken);AI.mode=(j&&j.ai)?"server":"none";AI.web=!!(j&&j.web);AI.tc=!!(j&&j.tricount);if(AI.tc&&S.set.tricount&&(!S.tcSync||Date.now()-S.tcSync.at>900000))tcSync(true);}).catch(function(e){AI.mode="none";AI.reach="ko";AI.err=(e instanceof TypeError)?"aucune réponse":((e&&e.message)||"");}).then(function(){aiRerender();var st=document.getElementById("minix-state");if(st)st.textContent="État : "+minixState();});
   }catch(e){AI.mode="none";aiRerender();}
+}
+/* État lisible de la connexion au Minix (mises à jour) et de l’assistant IA */
+function minixState(){
+  if(AI.mode==="claude")return "Claude (app Claude)";
+  if(AI.mode==="pending"||AI.reach==="pending")return "connexion…";
+  if(AI.mode==="server")return "Minix connecté, assistant IA actif";
+  if(!aiBase()&&NATIVE)return "adresse du Minix non renseignée : l’APK ne reçoit pas les mises à jour";
+  if(AI.reach==="ok")return "Minix connecté (les mises à jour arrivent), mais assistant IA indisponible : "+(AI.needsToken?"code d’accès absent ou incorrect, ou ":"")+"clé API absente sur le Minix";
+  if(aiBase())return "Minix injoignable"+(AI.err?" ("+AI.err+")":"")+". Vérifiez que l’adresse commence par https:// et finit par .ts.net, sans :8080, et que Tailscale est actif sur le téléphone";
+  return "non disponible";
 }
 function aiInit(){
   if(window.claude&&typeof window.claude.use==="function"){
