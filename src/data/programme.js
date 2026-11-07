@@ -58,7 +58,7 @@ const DAYS = [
   ["11:55","Bateau vers Wat Arun","Bateau sur le fleuve, puis petit bac si besoin. Prix à vérifier avant de monter.","transport",null,null,null,"l-arun"],
   ["12:15","Wat Arun","Montée du prang central, vue sur le fleuve. Épaules et genoux couverts. Entrée environ 200 THB (tarif relevé en 2026, à vérifier). Eau et en-cas : le déjeuner est décalé.","visit","bkk-arun"],
   ["13:30","Petit bac vers Tha Tien","Quelques bahts.","transport"],
-  ["13:45","Déjeuner côté Tha Tien, dans un endroit couvert","Végétarien : « jay » ou « mangsawirat ».","meal"],
+  ["13:45","Déjeuner côté Tha Tien, dans un endroit couvert","Pas trop épicé : « mai phet ».","meal"],
   ["14:45","Wat Pho et Bouddha couché","Bouddha couché et galeries couvertes en cas de pluie. Massage possible sur place. Entrée environ 300 THB. Fermeture vers 18 h 30, horaire à vérifier.","visit","bkk-pho"],
   ["16:45","Option : massage, bateau dans les khlongs ou retour à l’hôtel","Selon l’énergie et la météo. Les tours des khlongs s’arrêtent souvent en fin d’après-midi : tarif, durée et dernier départ à vérifier avant d’embarquer.","visit","bkk-khlong"],
   ["18:30","Soirée libre","Marché, massage ou dîner tranquille. Confirmer le chauffeur d’Ayutthaya pour demain 07 h 30.","rest"]
@@ -146,7 +146,7 @@ const DAYS = [
   ["17:00","Retour à Ao Nang","Avant la baisse de fréquence des bateaux.","transport"]
  ]),
  D(13,"17","Hong Islands en catamaran","Ao Nang","an",
-  "Prévoir 600 THB de droits de parc, à payer à l’enregistrement. Menu A pour Sylvain, menu végétarien E pour la deuxième personne.",[
+  "Prévoir 600 THB de droits de parc, à payer à l’enregistrement. Menu A pour Sylvain. Le menu végétarien E avait été choisi pour la deuxième personne à la réservation : prévenez l’opérateur pour en changer.",[
   ["09:30","Fenêtre de prise en charge à l’hôtel","Attendre dans le hall 10 à 15 minutes avant l’heure communiquée.","transport"],
   ["11:00","Début de l’activité : navette, longtail, catamaran","Références BK364041493320936 et BK352621916655631.","transport","an-hong"],
   ["12:30","Déjeuner à bord","","meal"],
