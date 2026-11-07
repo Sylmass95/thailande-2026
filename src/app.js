@@ -1101,10 +1101,26 @@ function expRow(e){
 }
 function dayExps(date){return expActive().filter(function(e){return !e.pre&&e.date===date;}).sort(function(a,b){var ka=a.when||"",kb=b.when||"";return ka<kb?1:ka>kb?-1:0;});}
 function catLine(list){var c={};list.forEach(function(e){c[e.cat]=(c[e.cat]||0)+toEur(e);});var k=Object.keys(c).sort(function(a,b){return c[b]-c[a];});return k.length>1?'<p class="small muted" style="margin-top:6px">'+k.map(function(x){return esc(catName(x))+" "+eurTxt(c[x]);}).join(" · ")+'</p>':"";}
+/* Budget du jour par poste : part du budget quotidien (modifiable dans « Définir le budget ») */
+var DAY_GROUPS=[["nourriture","Repas et boissons",["nourriture"],0.5],["transport","Transport",["transport"],0.25],["activites","Activités et visites",["excursions"],0.15],["bienetre","Massages",["bienetre"],0.06],["autre","Shopping et divers",["shopping","autre","hebergement","vols"],0.04]];
+function dayGroupBudget(g,dailyB){var B=S.budget||{},v=B.dcat&&parseFloat(B.dcat[g[0]]);return v>0?v:dailyB*g[3];}
+function todayBarsHtml(today){
+  var rate=S.set.rate||37.71,dailyB=budgetStats().dailyB;if(!dailyB)return "";
+  var list=dayExps(today).filter(function(e){return toEur(e)*rate<BIG_THB;});
+  var h='<div style="margin-top:12px">';
+  DAY_GROUPS.forEach(function(g){
+    var v=0;list.forEach(function(e){if(g[2].indexOf(e.cat)>=0)v+=toEur(e);});
+    var bud=dayGroupBudget(g,dailyB),over=v>bud+0.005;
+    h+='<div class="bcat"><div class="row" style="justify-content:space-between"><span>'+esc(g[1])+'</span><b'+(over?' style="color:var(--alert)"':'')+'>'+eurTxt(v)+' / '+eurTxt(bud)+'</b></div>'+bar(v,bud)
+      +'<span class="small muted">'+(over?'<span style="color:var(--alert)">Dépassé de '+eurTxt(v-bud)+'</span>':'Reste '+eurTxt(bud-v))+' · '+thbTxt(v*rate)+' sur '+thbTxt(bud*rate)+'</span></div>';
+  });
+  return h+'</div>';
+}
 function todayExpHtml(today){
   var list=dayExps(today);
-  if(!list.length)return '<p class="small muted" style="margin-top:8px">Aucune dépense enregistrée aujourd’hui pour l’instant.</p>';
-  return '<div style="margin-top:10px">'+list.map(expRow).join("")+'</div>'+catLine(list);
+  var bars=todayBarsHtml(today);
+  if(!list.length)return bars+'<p class="small muted" style="margin-top:8px">Aucune dépense enregistrée aujourd’hui pour l’instant.</p>';
+  return bars+'<p class="small" style="margin-top:12px"><b>Dépenses du jour</b></p><div>'+list.map(expRow).join("")+'</div>';
 }
 function dayExpHtml(){
   var rate=S.set.rate||37.71,by={},today=dateKey(nowMs(),TRIP_TZ),dailyB=budgetStats().dailyB;
@@ -1173,7 +1189,9 @@ function vTricount2(){
   list.forEach(function(e){var off=e.src==="roadbook"&&S.budget&&S.budget.includePre===false;h+='<div class="kv" style="flex-wrap:wrap'+(off?';opacity:.45':'')+'"><span style="flex:1;min-width:140px"><b>'+esc(e.title)+'</b><br><span class="small muted">'+esc(e.date)+(e.src==="tricount"?" · Tricount"+(e.payer?" ("+esc(e.payer)+")":""):e.src==="assistant"?" · Assistant":e.src==="roadbook"?" · réservé (roadbook)":"")+'</span></span><span style="text-align:right"><b>'+(e.cur==="EUR"?eurTxt(e.amt):thbTxt(e.amt))+'</b><br><span class="small muted">'+(e.cur==="EUR"?thbTxt(e.amt*rate):eurTxt(toEur(e)))+'</span></span><select data-a="expcat" data-id="'+e.id+'" style="width:auto;min-height:36px;padding:4px 6px;font-size:14px">'+CATS.map(function(c){return '<option value="'+c[0]+'"'+(c[0]===e.cat?" selected":"")+'>'+esc(c[1])+'</option>';}).join("")+'</select>'+(e.tid?'':'<button class="cp" data-a="expdel" data-id="'+e.id+'" aria-label="Supprimer">Suppr.</button>')+'</div>';});
   h+='</div></details>';
   /* réglages */
-  h+='<details class="card"><summary>Définir le budget (en euros)</summary><div><p class="small muted" style="margin-bottom:8px">Prérempli d’après le roadbook : 3 228,21 € de vols, hôtels et excursions déjà réservés, objectif 4 000 € et maximum 4 400 € pour deux.</p><div class="row" style="margin-bottom:10px"><button class="'+(B.scen!=="max"?"btn":"btn alt")+'" data-a="budscen" data-v="obj">Répartition 4 000 €</button><button class="'+(B.scen==="max"?"btn":"btn alt")+'" data-a="budscen" data-v="max">Répartition 4 400 €</button></div><div class="row"><label style="flex:1">Objectif<input type="number" inputmode="decimal" data-a="bud" data-k="total" value="'+esc(B.total||"")+'"></label><label style="flex:1">Maximum<input type="number" inputmode="decimal" data-a="bud" data-k="max" value="'+esc(B.max||"")+'"></label></div><div class="row" style="margin-top:8px"><label style="flex:1">Par jour, hors gros paiements<input type="number" inputmode="decimal" data-a="bud" data-k="daily" value="'+esc(B.daily||"")+'" placeholder="auto"></label></div>';
+  h+='<details class="card"><summary>Définir le budget (en euros)</summary><div><p class="small muted" style="margin-bottom:8px">Prérempli d’après le roadbook : 3 228,21 € de vols, hôtels et excursions déjà réservés, objectif 4 000 € et maximum 4 400 € pour deux.</p><div class="row" style="margin-bottom:10px"><button class="'+(B.scen!=="max"?"btn":"btn alt")+'" data-a="budscen" data-v="obj">Répartition 4 000 €</button><button class="'+(B.scen==="max"?"btn":"btn alt")+'" data-a="budscen" data-v="max">Répartition 4 400 €</button></div><div class="row"><label style="flex:1">Objectif<input type="number" inputmode="decimal" data-a="bud" data-k="total" value="'+esc(B.total||"")+'"></label><label style="flex:1">Maximum<input type="number" inputmode="decimal" data-a="bud" data-k="max" value="'+esc(B.max||"")+'"></label></div><div class="row" style="margin-top:8px"><label style="flex:1">Par jour, hors gros paiements<input type="number" inputmode="decimal" data-a="bud" data-k="daily" value="'+esc(B.daily||"")+'" placeholder="auto"></label></div>'
+   +'<p class="small" style="margin-top:10px"><b>Budget du jour par poste</b> (en euros, facultatif)</p><p class="small muted">Laissé vide : part du budget du jour (repas 50 %, transport 25 %, activités 15 %, massages 6 %, divers 4 %).</p>'
+   +DAY_GROUPS.map(function(g){var dB=budgetStats().dailyB;return '<label style="display:block;margin-top:6px">'+esc(g[1])+'<input type="number" inputmode="decimal" data-a="bud" data-k="dcat:'+g[0]+'" value="'+esc((B.dcat&&B.dcat[g[0]])||"")+'" placeholder="'+(dB?(Math.round(dB*g[3]*100)/100).toString().replace(".",","):"auto")+'"></label>';}).join("");
   CATS.forEach(function(c){h+='<label style="display:block;margin-top:8px">'+esc(c[1])+'<input type="number" inputmode="decimal" data-a="bud" data-k="cat:'+c[0]+'" value="'+esc((B.cats&&B.cats[c[0]])||"")+'" placeholder="facultatif"></label>'+(ROADBOOK_BUDGET.hints[c[0]]?'<span class="small muted">'+esc(ROADBOOK_BUDGET.hints[c[0]])+'</span>':'');});
   h+='<label class="ck" style="margin-top:10px"><input type="checkbox" data-a="budpre"'+(B.includePre!==false?" checked":"")+'><span>Compter les réservations du roadbook (vols, hôtels, excursions). Décochez si elles sont déjà saisies dans Tricount.</span></label>';
   h+='<div class="row" style="margin-top:10px"><button class="cp" data-a="budseed">Recharger les valeurs du roadbook</button></div></div></details>';
@@ -1347,7 +1365,7 @@ document.addEventListener("change",function(e){
   if(a==="aipos"){S.set.aiPos=el.checked;save();return;}
   if(a==="budpre"){S.budget=S.budget||{};S.budget.includePre=el.checked;save();render(true);return;}
   if(a==="expcat"){S.exp.forEach(function(x){if(x.id===el.getAttribute("data-id")){x.cat=el.value;x.catUser=true;}});save();UI.expOpen=true;render(true);return;}
-  if(a==="bud"){var k=el.getAttribute("data-k"),val=el.value===""?"":parseFloat(el.value);S.budget=S.budget||{};if(k.indexOf("cat:")===0){S.budget.cats=S.budget.cats||{};S.budget.cats[k.slice(4)]=val;}else S.budget[k]=val;save();render(true);return;}
+  if(a==="bud"){var k=el.getAttribute("data-k"),val=el.value===""?"":parseFloat(el.value);S.budget=S.budget||{};if(k.indexOf("dcat:")===0){S.budget.dcat=S.budget.dcat||{};S.budget.dcat[k.slice(5)]=val;}else if(k.indexOf("cat:")===0){S.budget.cats=S.budget.cats||{};S.budget.cats[k.slice(4)]=val;}else S.budget[k]=val;save();render(true);return;}
   if(a==="csvfile"){var cfile=el.files&&el.files[0];if(!cfile)return;var rd=new FileReader();rd.onload=function(){var r=importCSV(String(rd.result||""),($("#csv-cur")||{}).value||"EUR");if(r.error)toast(r.error);else toast(r.added+" dépense(s) importée(s), "+r.skipped+" ignorée(s)");UI.expOpen=true;render(true);};rd.readAsText(cfile);return;}
   if(a==="tcfrom"){S.set.tcFrom=/^\d{4}-\d{2}-\d{2}$/.test(el.value)?el.value:"";save();S.tcNew=null;if(AI.tc){tcSync(true,false,true);toast("Tricount relu à partir du "+tcFromTxt());}else toast("Date enregistrée : "+tcFromTxt());return;}
   if(a==="tclink"){S.set.tricount=el.value.trim();save();S.tcSync=null;if(UI.tab==="tricount")render(true);if(AI.tc)tcSync(false);else toast("Lien Tricount enregistré");return;}
