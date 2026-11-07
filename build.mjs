@@ -19,7 +19,13 @@ const head = r("src/head.html");
 const hash = crypto.createHash("sha256").update(code + head).digest("hex").slice(0, 10);
 let t = Date.now();
 try { t = parseInt(execSync("git log -1 --format=%ct", { cwd: ROOT, stdio: ["ignore", "pipe", "ignore"] }).toString().trim(), 10) * 1000 || t; } catch (e) {}
-const js = "var BUILD={v:" + JSON.stringify(hash) + ",t:" + t + "};\n" + code;
+// numéro de version lisible : 1.<nombre de commits> (identique sur le Minix et pour l’APK, qui ont tout l’historique)
+let n = "";
+try {
+  const git = (c) => execSync(c, { cwd: ROOT, stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+  if (git("git rev-parse --is-shallow-repository") === "false") n = "1." + git("git rev-list --count HEAD");
+} catch (e) {}
+const js = "var BUILD={v:" + JSON.stringify(hash) + ",t:" + t + ",n:" + JSON.stringify(n) + "};\n" + code;
 
 try { new Function(js); } catch (e) { console.error("Erreur de syntaxe JavaScript :", e.message); process.exit(1); }
 if (/<\/script/i.test(js)) { console.error("Le code contient « </script » : interdit."); process.exit(1); }
@@ -41,11 +47,11 @@ fs.rmSync(tmp, { recursive: true, force: true });
 fs.mkdirSync(path.join(tmp, "icons"), { recursive: true });
 fs.writeFileSync(path.join(tmp, "index.html"), plain(head));
 fs.writeFileSync(path.join(tmp, "apk.html"), loader);
-fs.writeFileSync(path.join(tmp, "app-bundle.json"), JSON.stringify({ v: hash, t, css, js }));
+fs.writeFileSync(path.join(tmp, "app-bundle.json"), JSON.stringify({ v: hash, t, n, css, js }));
 fs.writeFileSync(path.join(tmp, "sw.js"), r("public/sw.js").replace("__BUILD__", hash));
 fs.copyFileSync(path.join(ROOT, "public/manifest.webmanifest"), path.join(tmp, "manifest.webmanifest"));
 for (const f of fs.readdirSync(path.join(ROOT, "public/icons"))) fs.copyFileSync(path.join(ROOT, "public/icons", f), path.join(tmp, "icons", f));
-fs.writeFileSync(path.join(tmp, "version.json"), JSON.stringify({ v: hash, t }));
+fs.writeFileSync(path.join(tmp, "version.json"), JSON.stringify({ v: hash, t, n }));
 
 // remplacement quasi instantané de dist/ (le serveur lit dist/ à chaque requête)
 const dist = path.join(ROOT, "dist"), old = path.join(ROOT, "dist.old");
@@ -56,4 +62,4 @@ fs.rmSync(old, { recursive: true, force: true });
 
 fs.mkdirSync(path.join(ROOT, "dist-artifact"), { recursive: true });
 fs.writeFileSync(path.join(ROOT, "dist-artifact/thailande-2026-carnet-de-route.html"), plain(r("src/head-artifact.html")));
-console.log("Build " + hash + " (" + new Date(t).toISOString() + ") : " + Math.round(fs.statSync(path.join(dist, "index.html")).size / 1024) + " Ko");
+console.log("Build " + (n ? n + " " : "") + hash + " (" + new Date(t).toISOString() + ") : " + Math.round(fs.statSync(path.join(dist, "index.html")).size / 1024) + " Ko");
