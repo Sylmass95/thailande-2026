@@ -156,7 +156,23 @@ ok(String(st2().budget.restePaid.lac || "").indexOf("auto:f1") === 0 && st2().bu
 ok(/Payé : trouvé dans Tricount/.test(d2.querySelector("#view").textContent), "le paiement repéré doit être signalé");
 ok(/Prévision fin de voyage/.test(d2.querySelector("#view").textContent), "la prévision de fin de voyage doit s’afficher");
 
+// 8. assistant : bloc BUDGET_MODIF avec aperçu avant / après puis « Appliquer »
+chatReply = `Je monte l’objectif, le budget repas et j’ajoute le bateau.\n<<<BUDGET_MODIF\n[{"champ":"objectif","valeur":4100},{"champ":"repas_jour","valeur":30},{"champ":"categorie","cle":"nourriture","valeur":350},{"champ":"reste_ajout","libelle":"Bateau Koh Lanta","montant":1500,"devise":"THB","categorie":"transport"},{"champ":"reste_suppr","cle":"railay"},{"champ":"categorie","cle":"inconnue","valeur":10}]\nBUDGET_MODIF>>>`;
+click2("[data-a=tab][data-v=ai]");
+d2.querySelector("#ai-text").value = "Change le budget";
+click2("[data-a=aisend]");
+await wait(300);
+const bview = d2.querySelector("#view").textContent;
+ok(/Changements du budget proposés \(6\)/.test(bview) && /Objectif du voyage : 4\s000 € → 4\s100 €/.test(bview), "l’aperçu des changements du budget doit s’afficher avec avant → après");
+ok(/Reste à payer \+ « Bateau Koh Lanta » : 1\s500 THB/.test(bview) && /Retirer « Bateau de Railay/.test(bview) && /Catégorie inconnue : inconnue/.test(bview), "l’aperçu doit lister l’ajout, le retrait et signaler la clé invalide");
+ok(st2().budget.total === 4000, "rien ne doit changer avant « Appliquer »");
+click2("[data-a=budapply]");
+const B8 = st2().budget;
+ok(B8.total === 4100 && B8.foodDay === 30 && B8.dcat.nourriture === 30 && B8.cats.nourriture === 350, "objectif, repas par jour et budget nourriture doivent être appliqués");
+ok((B8.resteExtra || []).length === 1 && B8.resteRemoved.railay === true && B8.resteTHB === 4800 - 400 + 1500, `reste à payer après ajout et retrait : ${B8.resteTHB} THB (attendu 5 900)`);
+ok(JSON.parse(w2.localStorage.getItem("thai26-backups"))[0].reason.indexOf("budget proposés par l’assistant") >= 0, "une sauvegarde doit précéder les changements du budget");
+
 await wait(50);
 if (errors.length) { console.error("ÉCHEC (budget) :\n- " + errors.join("\n- ")); process.exit(1); }
-console.log(`OK : budget synchronisé avec Tricount (${before.toFixed(2)} € → ${after.toFixed(2)} €, Tricount ${tcTotal.toFixed(2)} €), modification, suppression, sauvegardes, blocs de l’assistant, budget prévisionnel.`);
+console.log(`OK : budget synchronisé avec Tricount (${before.toFixed(2)} € → ${after.toFixed(2)} €, Tricount ${tcTotal.toFixed(2)} €), modification, suppression, sauvegardes, blocs de l’assistant (dépenses et budget), budget prévisionnel.`);
 process.exit(0);
