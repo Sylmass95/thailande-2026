@@ -148,6 +148,12 @@ const paid = d2.querySelector('[data-a=restepaid][data-id="kao"]');
 ok(!!paid, "la case « payé » du transfert Khao Sok → Ao Nang doit exister");
 if (paid) { paid.checked = true; paid.dispatchEvent(new w2.Event("change", { bubbles: true })); }
 ok(st2().budget.resteTHB === 5480, "cocher un transfert payé doit baisser le reste à payer à 5 480 THB");
+// paiement réel ajouté dans Tricount : repéré automatiquement, sans cocher
+TRICOUNT.push(T("f1", "2026-11-13", "Taxe lac Cheow Lan", 680, "THB", 18.05, "ENTERTAINMENT"));
+click2("[data-a=tcsync]");
+await wait(250);
+ok(String(st2().budget.restePaid.lac || "").indexOf("auto:f1") === 0 && st2().budget.resteTHB === 4800, `la taxe du lac payée doit être repérée dans Tricount (reste ${st2().budget.resteTHB} THB, attendu 4 800)`);
+ok(/Payé : trouvé dans Tricount/.test(d2.querySelector("#view").textContent), "le paiement repéré doit être signalé");
 ok(/Prévision fin de voyage/.test(d2.querySelector("#view").textContent), "la prévision de fin de voyage doit s’afficher");
 
 await wait(50);

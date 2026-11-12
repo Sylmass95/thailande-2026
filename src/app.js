@@ -1069,7 +1069,7 @@ function tcSync(silent,fresh,reset){
       var ne={id:"t"+x.tid,tid:x.tid,date:dt,title:x.title,amt:amt,cur:cur,cat:(p&&p.catUser)?p.cat:tcCat(x),catUser:!!(p&&p.catUser),payer:x.payer||"",src:"tricount",when:x.when||""};
       if(x.cur_tricount==="EUR"&&isFinite(x.amt_tricount))ne.eur=x.amt_tricount;if(truth&&dt<tcFrom())ne.pre=true;S.exp.push(ne);});
     if(!first&&added.length)S.tcNew={at:Date.now(),ids:added.map(function(x){return x.tid;})};
-    S.tcSync={at:Date.now(),title:j.title||"",n:exps.length,skip:all.length-exps.length,totalAll:Math.round(totalAll*100)/100,truth:truth,currency:j.currency||""};save();
+    S.tcSync={at:Date.now(),title:j.title||"",n:exps.length,skip:(resteAuto(),all.length-exps.length),totalAll:Math.round(totalAll*100)/100,truth:truth,currency:j.currency||""};save();
     var nt=first?"":added.length?added.length+(added.length>1?" nouvelles dépenses":" nouvelle dépense")+" : "+added.slice(0,3).map(function(x){return x.title;}).join(", "):"Aucune nouvelle dépense dans Tricount";
     if(!silent)toast(first?exps.length+" dépense(s) lue(s) dans Tricount":nt);else if(added.length&&!first)toast("Tricount · "+nt);
   },function(e){TC.err=(e&&e.message)||"erreur";if(!silent)toast("Tricount : "+TC.err);})
@@ -1662,11 +1662,28 @@ function rcHtml(){
 /* --- budget prévisionnel d’après Tricount (12 novembre) --- */
 var TC_FORECAST={id:"tricount-2026-11-12-v2",label:"valeurs Tricount du 12 novembre",total:4000,max:4400,
   spent:{vols:1696,hebergement:1248,excursions:421,nourriture:156,transport:160,shopping:25},
-  /* reste à payer d’ici la fin : [clé, libellé, THB, catégorie] */
-  reste:[["kao","Transfert Khao Sok → Ao Nang",3000,"transport"],["anmk","Transfert Ao Nang → Mai Khao",3000,"transport"],
-    ["frais","Espèces pour les frais : taxe du lac 680, Phi Phi 800, Railay 400, Hong Islands 600",2480,"excursions"]],
+  /* reste à payer d’ici la fin : [clé, libellé, THB, catégorie, mots-clés, du, au] ; repéré automatiquement dans Tricount une fois payé */
+  reste:[["kao","Transfert Khao Sok → Ao Nang",3000,"transport",/khao ?sok|ao ?nang|krabi/i,"2026-11-13","2026-11-16"],
+    ["anmk","Transfert Ao Nang → Mai Khao",3000,"transport",/mai ?khao|phuket|ao ?nang/i,"2026-11-17","2026-11-19"],
+    ["lac","Taxe du lac (espèces)",680,"excursions",/lac|lake|cheo?w|ratchaprapha/i,"2026-11-12","2026-11-19"],
+    ["phiphi","Parc de Phi Phi (espèces)",800,"excursions",/phi ?phi/i,"2026-11-12","2026-11-19"],
+    ["railay","Bateau de Railay (espèces)",400,"excursions",/rail[ae]y/i,"2026-11-12","2026-11-19"],
+    ["hong","Parc de Hong Islands (espèces)",600,"excursions",/hong/i,"2026-11-12","2026-11-19"]],
   resteLabel:"transferts Khao Sok → Ao Nang et Ao Nang → Mai Khao, espèces pour la taxe du lac, Phi Phi, Railay et Hong Islands",foodDay:25,foodDays:7};
 function restePaid(k){var B=S.budget||{};return !!(B.restePaid&&B.restePaid[k]);}
+/* repère dans Tricount les paiements du reste à payer (montant en THB proche, mot-clé ou période) */
+function resteAuto(){
+  var B=S.budget;if(!B||!B.forecastV)return false;B.restePaid=B.restePaid||{};
+  var used={},changed=false;Object.keys(B.restePaid).forEach(function(k){var v=B.restePaid[k];if(typeof v==="string")used[v.slice(5)]=1;});
+  TC_FORECAST.reste.forEach(function(x){
+    if(B.restePaid[x[0]]!=null)return;/* déjà payé, ou décoché à la main : on n’y touche plus */
+    var cand=S.exp.filter(function(e){if(!e.tid||used[e.tid]||e.cur!=="THB"||e.date<x[5]||e.date>x[6])return false;var d=Math.abs(e.amt-x[2])/x[2];return d<=0.15&&(x[4].test(e.title)||(d<=0.03&&e.cat===x[3]));});
+    cand.sort(function(a,b){return (x[4].test(b.title)?1:0)-(x[4].test(a.title)?1:0)||Math.abs(a.amt-x[2])-Math.abs(b.amt-x[2]);});
+    if(cand[0]){B.restePaid[x[0]]="auto:"+cand[0].tid;used[cand[0].tid]=1;changed=true;}
+  });
+  if(changed){B.resteTHB=resteTHB();save();}
+  return changed;
+}
 function resteTHB(){var t=0;TC_FORECAST.reste.forEach(function(x){if(!restePaid(x[0]))t+=x[2];});return t;}
 function forecastCats(){
   var f=TC_FORECAST,r=S.set.rate||37.71,c=JSON.parse(JSON.stringify(f.spent));
@@ -1687,8 +1704,8 @@ function forecastHtml(){
     +keys.map(function(k){return '<tr style="border-top:1px solid var(--line)"><td>'+esc(catName(k))+'</td><td style="text-align:right">'+(cur[k]?eurTxt(parseFloat(cur[k])):"—")+'</td><td style="text-align:right">'+(nc[k]?eurTxt(nc[k]):"—")+'</td></tr>';}).join("")+'</table>';
   h+='<p class="small muted" style="margin-top:6px">Transport : dépensé + transferts. Excursions : dépensé + espèces pour les frais. Nourriture : dépensé + repas des jours restants. Budget des repas du jour : '+eurTxt(f.foodDay)+'.</p>';
   h+='<div class="row" style="margin-top:8px"><button class="'+(applied?'cp':'btn')+'" data-a="fcapply">'+(applied?'Réappliquer ce budget':'Appliquer ce budget')+'</button></div>';
-  h+='<p class="small" style="margin-top:12px"><b>À payer d’ici la fin</b> · cochez au fur et à mesure (le paiement apparaît alors dans Tricount)</p>';
-  f.reste.forEach(function(x){h+='<label class="ck"><input type="checkbox" data-a="restepaid" data-id="'+x[0]+'"'+(restePaid(x[0])?' checked':'')+'><span style="flex:1'+(restePaid(x[0])?';text-decoration:line-through;opacity:.6':'')+'">'+esc(x[1])+'</span><b>'+thbTxt(x[2])+'</b><span class="small muted" style="flex:none;margin-left:6px">≈ '+eurTxt(x[2]/r)+'</span></label>';});
+  h+='<p class="small" style="margin-top:12px"><b>À payer d’ici la fin</b> · repéré automatiquement dans Tricount une fois payé (sinon, cochez à la main)</p>';
+  f.reste.forEach(function(x){var pv=B.restePaid&&B.restePaid[x[0]],ae=typeof pv==="string"?S.exp.filter(function(e){return e.tid===pv.slice(5);})[0]:null;h+='<label class="ck"><input type="checkbox" data-a="restepaid" data-id="'+x[0]+'"'+(restePaid(x[0])?' checked':'')+'><span style="flex:1'+(restePaid(x[0])?';opacity:.6':'')+'"><span'+(restePaid(x[0])?' style="text-decoration:line-through"':'')+'>'+esc(x[1])+'</span>'+(ae?'<br><span class="small" style="color:var(--ok)">Payé : trouvé dans Tricount (« '+esc(ae.title)+' », '+esc(ae.date)+')</span>':'')+'</span><b>'+thbTxt(x[2])+'</b><span class="small muted" style="flex:none;margin-left:6px">≈ '+eurTxt(x[2]/r)+'</span></label>';});
   h+='<p class="small" style="margin-top:4px">Reste : <b>'+thbTxt(resteTHB())+' ≈ '+eurTxt(resteTHB()/r)+'</b></p>';
   h+='<label class="small" style="display:block;margin-top:10px">Repas pour deux par jour restant (€)<input type="number" inputmode="decimal" data-a="bud" data-k="foodDay" value="'+esc(B.foodDay!=null?B.foodDay:"")+'" placeholder="'+f.foodDay+'"></label>';
   return h+'</div></details>';
@@ -1700,12 +1717,12 @@ function forecastApply(){
   S.budget=S.budget||{};S.budget.cats=nc;S.budget.total=f.total;S.budget.max=f.max;S.budget.foodDay=f.foodDay;S.budget.forecastV=f.id;
   S.budget.dcat=S.budget.dcat||{};S.budget.dcat.nourriture=f.foodDay;
   S.budget.resteTHB=resteTHB();
-  save();toast("Budget prévisionnel mis à jour");render(true);
+  save();resteAuto();toast("Budget prévisionnel mis à jour");render(true);
 }
 function resteToggle(k,on){
   if(!backup("Avant changement du reste à payer"))return;
-  S.budget=S.budget||{};S.budget.restePaid=S.budget.restePaid||{};S.budget.restePaid[k]=on;
-  if(S.budget.forecastV)S.budget.resteTHB=resteTHB();save();var y=window.scrollY;render(true);window.scrollTo(0,y);
+  S.budget=S.budget||{};S.budget.restePaid=S.budget.restePaid||{};S.budget.restePaid[k]=on?true:false;
+  if(S.budget.forecastV)S.budget.resteTHB=resteTHB();save();if(on)resteAuto();var y=window.scrollY;render(true);window.scrollTo(0,y);
 }
 /* prévision : dépensé + reste à payer + nourriture des jours restants */
 function forecastStats(b){
