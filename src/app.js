@@ -734,7 +734,7 @@ function vAi(){
   h+='<div class="composer card">'
    +(AI.imgUrl?'<div class="row" style="margin-bottom:8px"><img src="'+AI.imgUrl+'" alt="Photo jointe" style="width:64px;height:64px;object-fit:cover;border-radius:10px"><button class="cp" data-a="aiclearimg">Retirer la photo</button></div>':'')
    +'<textarea id="ai-text" rows="2" data-a="aidraft" placeholder="Votre question…">'+esc(AI.draft)+'</textarea>'
-   +'<div class="row" style="margin-top:8px">'+(canImg?'<button class="btn alt" data-a="aiphoto">Photo</button><input type="file" id="ai-file" accept="image/*" capture="environment" data-a="aifile" hidden>':'')
+   +'<div class="row" style="margin-top:8px">'+(canImg?'<button class="btn alt" data-a="aiphoto">Appareil photo</button><button class="btn alt" data-a="aigal">Galerie</button><input type="file" id="ai-file" accept="image/*" capture="environment" data-a="aifile" hidden><input type="file" id="ai-gal" accept="image/*" data-a="aifile" hidden>':'')
    +'<label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-a="aipos"'+(S.set.aiPos!==false?" checked":"")+'> Envoyer ma position</label>'
    +(AI.busy?'<button class="btn warn" data-a="aistop" style="margin-left:auto">Stop</button>':'<button class="btn" data-a="aisend" style="margin-left:auto">Envoyer</button>')+'</div></div>';
   return h;
@@ -1362,7 +1362,7 @@ document.addEventListener("click",function(e){
     case "rclive":RC.done=null;rcLive();break;
     case "rcpaste":RC.paste=(($("#rc-paste")||{}).value||"");var rp=rcParse(RC.paste);if(rp.error){RC.err=rp.error;render(true);}else if(!rp.list.length){RC.err="Aucune dépense reconnue ("+rp.skipped+" ligne(s) ignorée(s)).";render(true);}else{rcLoad(rp.list,"paste");toast(rp.list.length+" dépense(s) lue(s)"+(rp.skipped?", "+rp.skipped+" ligne(s) ignorée(s)":""));}break;
     case "rccsv":var rf=$("#rc-file");if(rf)rf.click();break;
-    case "rcshot":UI.tab="ai";AI.draft="Voici une capture de notre Tricount : extrais la liste complète des dépenses pour la comparer avec l’app.";render();var rsf=$("#ai-file");if(rsf)rsf.click();else toast("Photos non disponibles ici");break;
+    case "rcshot":UI.tab="ai";AI.draft="Voici une capture de notre Tricount : extrais la liste complète des dépenses pour la comparer avec l’app.";render();var rsf=$("#ai-gal");if(rsf)rsf.click();else toast("Photos non disponibles ici");break;
     case "rcapply":rcApply();break;
     case "rcall":if(RC.rows){RC.rows.forEach(function(r){if(r.kind===v)RC.sel[r.key]=id==="1";});var ys=window.scrollY;render(true);window.scrollTo(0,ys);}break;
     case "rcclose":RC.rows=null;RC.done=null;RC.list=null;render(true);break;
@@ -1375,7 +1375,7 @@ document.addEventListener("click",function(e){
     case "budscen":applyScenario(v);toast(v==="max"?"Répartition 4 400 € appliquée":"Répartition 4 000 € appliquée");render(true);break;
     case "budseed":if(confirm("Remplacer le budget par les valeurs du roadbook ?")){seedBudget(true);toast("Budget du roadbook rechargé");render(true);}break;
     case "csvpick":var cf=$("#csv-file");if(cf)cf.click();break;
-    case "tcshot":UI.tab="ai";AI.draft="Voici une capture de notre Tricount : ajoute ces dépenses au budget.";render();var af=$("#ai-file");if(af)af.click();else toast("Photos non disponibles ici");break;
+    case "tcshot":UI.tab="ai";AI.draft="Voici une capture de notre Tricount : ajoute ces dépenses au budget.";render();var af=$("#ai-gal");if(af)af.click();else toast("Photos non disponibles ici");break;
     case "aichip":var ch=AI_CHIPS.filter(function(c){return c[0]===v;})[0];if(!ch)break;
       if(v==="photo"){AI.draft=ch[2];render(true);var fi=$("#ai-file");if(fi)fi.click();else toast("Photos non disponibles ici");}
       else if(v==="thai"){AI.draft=ch[2];render(true);var ta=$("#ai-text");if(ta){ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);}}
@@ -1385,6 +1385,7 @@ document.addEventListener("click",function(e){
     case "aiclear":if(confirm("Effacer la conversation ?")){AI.msgs=[];saveAi();render(true);}break;
     case "aiclearimg":AI.img=null;if(AI.imgUrl){try{URL.revokeObjectURL(AI.imgUrl);}catch(e){}}AI.imgUrl=null;render(true);break;
     case "aiphoto":var f2=$("#ai-file");if(f2)f2.click();break;
+    case "aigal":var f3=$("#ai-gal");if(f3)f3.click();break;
     case "aispeak":var m1=AI.msgs[parseInt(b.getAttribute("data-i"),10)];if(m1)startQueue({title:"Assistant",sub:"Réponse"},[{t:"",x:aiPlain(m1.content)}],0);break;
     case "aicopy":var m2=AI.msgs[parseInt(b.getAttribute("data-i"),10)];if(m2)copy(m2.content);break;
     case "driver":showDriver(b.getAttribute("data-k"));break;
