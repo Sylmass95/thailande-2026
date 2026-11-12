@@ -141,9 +141,13 @@ ok(!st2().exp.some((e) => e.id === victim.id), "la suppression de l’assistant 
 click2("[data-a=tab][data-v=tricount]");
 click2("[data-a=fcapply]");
 const B = st2().budget;
-ok(B.cats.vols === 1696 && B.cats.hebergement === 1248 && B.cats.excursions === 421 && B.cats.shopping === 25, "les catégories du budget prévisionnel doivent reprendre Tricount");
-ok(Math.abs(B.cats.nourriture - 331) < 0.01 && Math.abs(B.cats.transport - (160 + 8500 / 37.71)) < 0.01, "nourriture et transport doivent inclure le reste à payer");
-ok(B.total === 4000 && B.max === 4400 && B.resteTHB === 8500, "objectif, maximum et reste à payer");
+ok(B.cats.vols === 1696 && B.cats.hebergement === 1248 && B.cats.shopping === 25, "les catégories du budget prévisionnel doivent reprendre Tricount");
+ok(Math.abs(B.cats.nourriture - 331) < 0.01 && Math.abs(B.cats.transport - (160 + 6000 / 37.71)) < 0.01 && Math.abs(B.cats.excursions - (421 + 2480 / 37.71)) < 0.01, "nourriture, transport (transferts) et excursions (espèces pour les frais) doivent inclure le reste à payer");
+ok(B.total === 4000 && B.max === 4400 && B.resteTHB === 8480 && B.dcat.nourriture === 25, "objectif, maximum, reste à payer (8 480 THB) et repas du jour (25 €)");
+const paid = d2.querySelector('[data-a=restepaid][data-id="kao"]');
+ok(!!paid, "la case « payé » du transfert Khao Sok → Ao Nang doit exister");
+if (paid) { paid.checked = true; paid.dispatchEvent(new w2.Event("change", { bubbles: true })); }
+ok(st2().budget.resteTHB === 5480, "cocher un transfert payé doit baisser le reste à payer à 5 480 THB");
 ok(/Prévision fin de voyage/.test(d2.querySelector("#view").textContent), "la prévision de fin de voyage doit s’afficher");
 
 await wait(50);
