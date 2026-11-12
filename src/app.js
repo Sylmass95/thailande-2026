@@ -762,10 +762,10 @@ function aiSend(text,speak){
   AI.busy=true;AI.live="";saveAi();render(true);window.scrollTo(0,document.body.scrollHeight);
   getPosOnce(function(){
     var rules=AI_RULES.concat([aiRestRule()]).join("\n")+"\n\n=== CONTEXTE DU VOYAGE ===\n"+tripContext()+"\n=== FIN DU CONTEXTE ===";
-    var hist=AI.msgs.slice(-12).map(function(m){var c=m.content;if(m.prop)c+="\n[Bloc PROGRAMME proposé pour le(s) jour(s) "+m.prop.map(function(v){return v.n;}).join(", ")+" : "+(m.applied==="ok"?"appliqué":m.applied==="no"?"ignoré":"en attente")+"]";if(m.exp)c+="\n[Bloc DEPENSES proposé : "+(m.expApplied?"ajouté":"en attente")+"]";if(m.mod)c+="\n[Bloc DEPENSES_MODIF proposé ("+m.mod.length+") : "+(m.modApplied||"en attente")+"]";if(m.del)c+="\n[Bloc DEPENSES_SUPPR proposé ("+m.del.length+") : "+(m.delApplied||"en attente")+"]";if(m.tcl)c+="\n[Liste Tricount extraite : "+m.tcl.length+" dépenses]";return {role:m.role,content:c};});
+    var hist=AI.msgs.slice(-12).map(function(m){var c=m.content;if(m.prop)c+="\n[Bloc PROGRAMME proposé pour le(s) jour(s) "+m.prop.map(function(v){return v.n;}).join(", ")+" : "+(m.applied==="ok"?"appliqué":m.applied==="no"?"ignoré":"en attente")+"]";if(m.exp)c+="\n[Bloc DEPENSES proposé : "+(m.expApplied?"ajouté":"en attente")+"]";if(m.mod)c+="\n[Bloc DEPENSES_MODIF proposé ("+m.mod.length+") : "+(m.modApplied||"en attente")+"]";if(m.del)c+="\n[Bloc DEPENSES_SUPPR proposé ("+m.del.length+") : "+(m.delApplied||"en attente")+"]";if(m.tcl)c+="\n[Liste Tricount extraite : "+m.tcl.length+" dépenses]";if(m.bud)c+="\n[Bloc BUDGET_MODIF proposé ("+m.bud.length+") : "+(m.budApplied||"en attente")+"]";return {role:m.role,content:c};});
     var finish=function(out,err){
       AI.busy=false;AI.ctl=null;
-      if(out){var ex=aiExtract(out);out=ex.clean;AI.msgs.push({role:"assistant",content:ex.clean||"(proposition ci-dessous)",prop:ex.prop,exp:ex.exp,mod:ex.mod,del:ex.del,tcl:ex.tcl,err:ex.err});saveAi();}
+      if(out){var ex=aiExtract(out);out=ex.clean;AI.msgs.push({role:"assistant",content:ex.clean||"(proposition ci-dessous)",prop:ex.prop,exp:ex.exp,mod:ex.mod,del:ex.del,tcl:ex.tcl,bud:ex.bud,err:ex.err});saveAi();}
       if(err)toast(err);
       render(true);window.scrollTo(0,document.body.scrollHeight);
       if(out&&speak){startQueue({title:"Assistant",sub:"Audio guide personnalisé"},[{t:"",x:aiPlain(out)}],0);}
@@ -865,6 +865,7 @@ function budgetContext(){
   if(S.exp.length){L.push("","DÉPENSES DE L’APP ("+S.exp.length+", total compté "+Math.round(sumEur(expActive())*100)/100+" €) — identifiant | date | titre | montant devise | ≈ euros | catégorie | source :");
     S.exp.slice().sort(function(a,c){return a.date<c.date?-1:a.date>c.date?1:0;}).forEach(function(e){L.push(e.id+" | "+e.date+" | "+e.title+" | "+e.amt+" "+e.cur+" | "+Math.round(toEur(e)*100)/100+" € | "+e.cat+" | "+(e.src||"manuel")+(e.tid?" (Tricount)":"")+(e.src==="roadbook"&&!inc?" (non comptée)":""));});}
   if(S.tcSync&&S.tcSync.totalAll!=null)L.push("Dernier total lu dans Tricount : "+S.tcSync.totalAll+" €.");
+  L.push(budgetSettingsContext());
   L.push("","IDENTIFIANTS UTILISABLES DANS UN BLOC PROGRAMME :");
   L.push("Sites (audio guide) : "+SITES.map(function(s){return s.id+" = "+s.name;}).join(" ; "));
   L.push("Trajets (prix) : "+Object.keys(LEGS).map(function(k){return k+" = "+LEGS[k].title;}).join(" ; "));
@@ -953,12 +954,14 @@ AI_RULES.push(
 "AJOUTER DES DÉPENSES : si l’utilisateur demande d’ajouter des dépenses au budget (texte, ticket, capture d’écran de Tricount), liste-les brièvement puis termine par :\n<<<DEPENSES\n[{\"date\":\"2026-11-07\",\"titre\":\"…\",\"montant\":120,\"devise\":\"THB\",\"categorie\":\"transport|nourriture|excursions|hebergement|bienetre|shopping|autre\"}]\nDEPENSES>>>\nPour Tricount, prends le montant total de chaque dépense, ignore les remboursements et indique la devise affichée.",
 "BUDGET : utilise les chiffres du contexte pour dire si le budget du jour ou du voyage est respecté, combien il reste et par catégorie.",
 "CORRIGER DES DÉPENSES : la liste complète des dépenses de l’app est dans le contexte, avec leur identifiant. Tricount est la référence. Si l’utilisateur demande de corriger ou de supprimer des dépenses (doublon, mauvais montant, mauvaise catégorie), explique en deux ou trois phrases puis termine par l’un ou les deux blocs, sans rien après :\n<<<DEPENSES_MODIF\n[{\"id\":\"…\",\"champ\":\"montant|devise|titre|date|categorie|payeur\",\"valeur\":…}]\nDEPENSES_MODIF>>>\n<<<DEPENSES_SUPPR\n[\"id1\",\"id2\"]\nDEPENSES_SUPPR>>>\nN’utilise que des identifiants présents dans le contexte. Un montant est un nombre (négatif autorisé pour une correction). L’utilisateur verra un aperçu et un bouton pour appliquer ou ignorer.",
+"MODIFIER LE BUDGET : si l’utilisateur demande de changer un réglage du budget (objectif, maximum, budget du jour, budget d’une catégorie ou d’un poste du jour, repas par jour, reste à payer), explique en une ou deux phrases puis termine par ce bloc, sans rien après :\n<<<BUDGET_MODIF\n[{\"champ\":\"objectif|maximum|jour|repas_jour\",\"valeur\":4100},{\"champ\":\"categorie\",\"cle\":\"nourriture\",\"valeur\":350},{\"champ\":\"poste_jour\",\"cle\":\"nourriture\",\"valeur\":30},{\"champ\":\"reste_ajout\",\"libelle\":\"Bateau Koh Lanta\",\"montant\":1500,\"devise\":\"THB\",\"categorie\":\"transport\"},{\"champ\":\"reste_modif\",\"cle\":\"…\",\"montant\":2500},{\"champ\":\"reste_paye\",\"cle\":\"…\",\"valeur\":true},{\"champ\":\"reste_suppr\",\"cle\":\"…\"}]\nBUDGET_MODIF>>>\nMontants en euros sauf pour le reste à payer (THB par défaut). N’utilise que les clés du contexte. Quand tu ajoutes un poste au reste à payer, propose aussi d’augmenter le budget de sa catégorie si nécessaire. L’utilisateur verra un aperçu avant / après et un bouton pour appliquer ou ignorer.",
 "LISTE TRICOUNT : si l’utilisateur envoie une capture de Tricount pour la comparer ou la synchroniser avec l’app, recopie toutes les dépenses visibles (montant total, devise affichée, sans les remboursements) dans ce bloc, sans rien après :\n<<<TRICOUNT_LISTE\n[{\"date\":\"2026-11-07\",\"titre\":\"…\",\"montant\":120,\"devise\":\"THB\",\"payeur\":\"…\"}]\nTRICOUNT_LISTE>>>\nL’app comparera elle-même avec ses dépenses."
 );
 function aiExtract(text){
-  var out={clean:text,prop:null,exp:null,mod:null,del:null,tcl:null,err:null};
+  var out={clean:text,prop:null,exp:null,mod:null,del:null,tcl:null,bud:null,err:null};
   var jb=function(tag){var r=new RegExp("<<<"+tag+"\\s*([\\s\\S]*?)\\s*"+tag+">>>").exec(text);if(!r)return undefined;out.clean=out.clean.replace(r[0],"").trim();try{var v=JSON.parse(r[1].replace(/^```(json)?|```$/g,""));return Array.isArray(v)?v:[v];}catch(e){out.err="Bloc "+tag+" illisible : "+e.message;return null;}};
   var md=jb("DEPENSES_MODIF");if(md)out.mod=md.slice(0,200).map(function(o){return {id:String(o.id||""),champ:String(o.champ||o.field||"").toLowerCase(),valeur:o.valeur!=null?o.valeur:o.value};}).filter(function(o){return o.id&&o.champ;});
+  var bd=jb("BUDGET_MODIF");if(bd)out.bud=bd.slice(0,50).filter(function(o){return o&&o.champ;});
   var dl=jb("DEPENSES_SUPPR");if(dl)out.del=dl.slice(0,200).map(function(o){return String(o&&o.id?o.id:o);}).filter(Boolean);
   var tl=jb("TRICOUNT_LISTE");if(tl)out.tcl=tl.slice(0,400).filter(function(o){return !RC_SKIP.test(String(o.titre||o.title||""));}).map(function(o){return {date:o.date,title:o.titre||o.title,amt:parseFloat(o.montant!=null?o.montant:o.amount),cur:String(o.devise||o.currency||"EUR").toUpperCase().replace("€","EUR").replace("฿","THB"),eur:o.euros!=null?o.euros:null,payer:o.payeur||o.payer||""};}).filter(function(o){return isFinite(o.amt)&&o.amt;});
   var m=/<<<PROGRAMME\s*([\s\S]*?)\s*PROGRAMME>>>/.exec(text);
@@ -986,6 +989,7 @@ function propCard(m,i){
     h+='</div>';
   }
   h+=aiExpCards(m,i);
+  h+=budCard(m,i);
   if(m.err)h+='<p class="small" style="color:var(--alert)">'+esc(m.err)+'</p>';
   return h;
 }
@@ -1181,7 +1185,7 @@ function vTricount2(){
   if(b.left!=null){
     h+='<p class="bnum'+(b.left<0?' over':'')+'">'+(b.left>=0?'Reste '+eurTxt(b.left):'Objectif dépassé de '+eurTxt(-b.left))+'</p><p class="small muted">Objectif '+eurTxt(parseFloat(B.total))+' · '+eurTxt(b.tot)+' engagés, dont '+eurTxt(b.pre)+' de réservations et '+eurTxt(b.onsite)+' dépensés sur place.</p>'+bar(b.tot,parseFloat(B.total));
     if(b.leftMax!=null)h+='<p class="small" style="margin-top:8px"><b>Maximum '+eurTxt(parseFloat(B.max))+'</b> : '+(b.leftMax>=0?'reste '+eurTxt(b.leftMax):'<span style="color:var(--alert)">dépassé de '+eurTxt(-b.leftMax)+'</span>')+'</p>'+bar(b.tot,parseFloat(B.max));
-    if(b.planned>0.5)h+='<p class="small muted" style="margin-top:8px">Reste à payer : '+eurTxt(b.planned)+' ('+(B.resteTHB!=null&&B.resteTHB!==""?esc(TC_FORECAST.resteLabel):'chauffeur Ayutthaya, transferts, ATV')+').</p>';
+    if(b.planned>0.5)h+='<p class="small muted" style="margin-top:8px">Reste à payer : '+eurTxt(b.planned)+' ('+(B.resteTHB!=null&&B.resteTHB!==""?esc(resteLabelTxt()):'chauffeur Ayutthaya, transferts, ATV')+').</p>';
     var fs=forecastStats(b);if(fs)h+='<p class="small" style="margin-top:8px"><b>Prévision fin de voyage : '+eurTxt(fs.end)+'</b> = '+eurTxt(b.tot)+' dépensés + '+eurTxt(fs.reste)+' à payer + '+fs.days+' jour'+(fs.days>1?'s':'')+' de nourriture ('+eurTxt(fs.food)+')'+(parseFloat(B.total)?' · objectif '+(fs.end<=parseFloat(B.total)?'tenu':'<span style="color:var(--alert)">dépassé de '+eurTxt(fs.end-parseFloat(B.total))+'</span>'):'')+'.</p>';
     if(b.perDay!=null){h+='<div class="prop" style="margin-top:10px"><p class="small"><b>Pour tenir 4 000 €</b> : '+(b.perDay>=0?'environ '+eurTxt(b.perDay)+' par jour pour deux ('+thbTxt(b.perDay*rate)+')':'<span style="color:var(--alert)">objectif déjà hors d’atteinte</span>')+'.<br><b>Pour rester sous 4 400 €</b> : '+(b.perDayMax>=0?'environ '+eurTxt(b.perDayMax)+' par jour ('+thbTxt(b.perDayMax*rate)+')':'<span style="color:var(--alert)">maximum déjà dépassé</span>')+'.</p><p class="small muted">Sur les '+b.daysLeft+' jours restants, aujourd’hui compris, après les gros paiements prévus.</p></div>';}
   }else h+='<p class="small">'+eurTxt(b.tot)+' au total.</p>';
@@ -1369,6 +1373,8 @@ document.addEventListener("click",function(e){
     case "fcapply":forecastApply();break;
     case "tclcompare":var tm=AI.msgs[parseInt(b.getAttribute("data-i"),10)];if(tm&&tm.tcl)rcLoad(tm.tcl.map(function(o,k){return rcItem(o,k);}),"capture");break;
     case "modapply":case "delapply":var mm=AI.msgs[parseInt(b.getAttribute("data-i"),10)];if(mm){var r1=a==="modapply"?aiModApply(mm.mod):aiDelApply(mm.del);if(r1!=null){if(a==="modapply")mm.modApplied=r1;else mm.delApplied=r1;saveAi();}render(true);}break;
+    case "budapply":var bm=AI.msgs[parseInt(b.getAttribute("data-i"),10)];if(bm){var rb=budApply(bm.bud);if(rb!=null){bm.budApplied=rb;saveAi();}render(true);}break;
+    case "budignore":var bi=AI.msgs[parseInt(b.getAttribute("data-i"),10)];if(bi){bi.budApplied="Ignorée";saveAi();render(true);}break;
     case "modignore":case "delignore":var mi=AI.msgs[parseInt(b.getAttribute("data-i"),10)];if(mi){if(a==="modignore")mi.modApplied="Ignorée";else mi.delApplied="Ignorée";saveAi();render(true);}break;
     case "expclear":if(confirm("Effacer toutes les dépenses enregistrées ?")){S.exp=[];save();render(true);}break;
     case "tcsync":tcSyncNow();break;
@@ -1676,26 +1682,35 @@ function restePaid(k){var B=S.budget||{};return !!(B.restePaid&&B.restePaid[k]);
 function resteAuto(){
   var B=S.budget;if(!B||!B.forecastV)return false;B.restePaid=B.restePaid||{};
   var used={},changed=false;Object.keys(B.restePaid).forEach(function(k){var v=B.restePaid[k];if(typeof v==="string")used[v.slice(5)]=1;});
-  TC_FORECAST.reste.forEach(function(x){
+  resteItems().forEach(function(x){
     if(B.restePaid[x[0]]!=null)return;/* déjà payé, ou décoché à la main : on n’y touche plus */
-    var cand=S.exp.filter(function(e){if(!e.tid||used[e.tid]||e.cur!=="THB"||e.date<x[5]||e.date>x[6])return false;var d=Math.abs(e.amt-x[2])/x[2];return d<=0.15&&(x[4].test(e.title)||(d<=0.03&&e.cat===x[3]));});
+    var cand=S.exp.filter(function(e){if(!e.tid||used[e.tid]||e.cur!=="THB"||e.date<x[5]||e.date>x[6])return false;var d=Math.abs(e.amt-x[2])/x[2];return d<=0.15&&(x[4].test(e.title)||x[4].test(normH(e.title))||(d<=0.03&&e.cat===x[3]));});
     cand.sort(function(a,b){return (x[4].test(b.title)?1:0)-(x[4].test(a.title)?1:0)||Math.abs(a.amt-x[2])-Math.abs(b.amt-x[2]);});
     if(cand[0]){B.restePaid[x[0]]="auto:"+cand[0].tid;used[cand[0].tid]=1;changed=true;}
   });
   if(changed){B.resteTHB=resteTHB();save();}
   return changed;
 }
-function resteTHB(){var t=0;TC_FORECAST.reste.forEach(function(x){if(!restePaid(x[0]))t+=x[2];});return t;}
+function kwRegex(label){var w=normH(label).split(/[^a-z0-9]+/).filter(function(x){return x.length>3&&!/^(transfert|bateau|especes|parc|taxe|frais|pour|avec)$/.test(x);});return w.length?new RegExp(w.join("|"),"i"):/$^/;}
+/* postes du reste à payer : [clé, libellé, THB, catégorie, mots-clés, du, au] */
+function resteItems(){
+  var B=S.budget||{},rm=B.resteRemoved||{},am=B.resteAmt||{};
+  var L=TC_FORECAST.reste.filter(function(x){return !rm[x[0]];}).map(function(x){return [x[0],x[1],am[x[0]]!=null?am[x[0]]:x[2],x[3],x[4],x[5],x[6]];});
+  (B.resteExtra||[]).forEach(function(e){L.push([e.k,e.label,am[e.k]!=null?am[e.k]:e.thb,e.cat,kwRegex(e.label),e.from||"2026-11-12","2026-11-19"]);});
+  return L;
+}
+function resteTHB(){var t=0;resteItems().forEach(function(x){if(!restePaid(x[0]))t+=x[2];});return t;}
+function resteLabelTxt(){var L=resteItems().filter(function(x){return !restePaid(x[0]);}).map(function(x){return x[1].replace(/ \(espèces\)$/,"");});return L.length?L.join(", "):"rien";}
 function forecastCats(){
   var f=TC_FORECAST,r=S.set.rate||37.71,c=JSON.parse(JSON.stringify(f.spent));
   c.nourriture=Math.round((c.nourriture+f.foodDay*f.foodDays)*100)/100;
-  f.reste.forEach(function(x){c[x[3]]=Math.round(((c[x[3]]||0)+x[2]/r)*100)/100;});
+  resteItems().forEach(function(x){c[x[3]]=Math.round(((c[x[3]]||0)+x[2]/r)*100)/100;});
   return c;
 }
 function forecastHtml(){
   var B=S.budget||{},f=TC_FORECAST,r=S.set.rate||37.71,nc=forecastCats(),applied=B.forecastV===f.id;
   var spent=0;Object.keys(f.spent).forEach(function(k){spent+=f.spent[k];});
-  var resteAll=0;f.reste.forEach(function(x){resteAll+=x[2];});
+  var resteAll=0;resteItems().forEach(function(x){resteAll+=x[2];});
   var food=f.foodDay*f.foodDays,end=spent+resteAll/r+food;
   var h='<details class="card"'+(applied?'':' open')+'><summary>Budget prévisionnel ('+esc(f.label)+')'+(applied?' · appliqué':'')+'</summary><div>';
   h+='<p class="small">Dépensé selon Tricount : <b>'+eurTxt(spent)+'</b>. À payer d’ici la fin : <b>'+thbTxt(resteAll)+' ≈ '+eurTxt(resteAll/r)+'</b>, plus '+f.foodDays+' jours de repas pour deux à '+eurTxt(f.foodDay)+' = '+eurTxt(food)+'.</p>';
@@ -1706,7 +1721,7 @@ function forecastHtml(){
   h+='<p class="small muted" style="margin-top:6px">Transport : dépensé + transferts. Excursions : dépensé + espèces pour les frais. Nourriture : dépensé + repas des jours restants. Budget des repas du jour : '+eurTxt(f.foodDay)+'.</p>';
   h+='<div class="row" style="margin-top:8px"><button class="'+(applied?'cp':'btn')+'" data-a="fcapply">'+(applied?'Réappliquer ce budget':'Appliquer ce budget')+'</button></div>';
   h+='<p class="small" style="margin-top:12px"><b>À payer d’ici la fin</b> · repéré automatiquement dans Tricount une fois payé (sinon, cochez à la main)</p>';
-  f.reste.forEach(function(x){var pv=B.restePaid&&B.restePaid[x[0]],ae=typeof pv==="string"?S.exp.filter(function(e){return e.tid===pv.slice(5);})[0]:null;h+='<label class="ck"><input type="checkbox" data-a="restepaid" data-id="'+x[0]+'"'+(restePaid(x[0])?' checked':'')+'><span style="flex:1'+(restePaid(x[0])?';opacity:.6':'')+'"><span'+(restePaid(x[0])?' style="text-decoration:line-through"':'')+'>'+esc(x[1])+'</span>'+(ae?'<br><span class="small" style="color:var(--ok)">Payé : trouvé dans Tricount (« '+esc(ae.title)+' », '+esc(ae.date)+')</span>':'')+'</span><b>'+thbTxt(x[2])+'</b><span class="small muted" style="flex:none;margin-left:6px">≈ '+eurTxt(x[2]/r)+'</span></label>';});
+  resteItems().forEach(function(x){var pv=B.restePaid&&B.restePaid[x[0]],ae=typeof pv==="string"?S.exp.filter(function(e){return e.tid===pv.slice(5);})[0]:null;h+='<label class="ck"><input type="checkbox" data-a="restepaid" data-id="'+x[0]+'"'+(restePaid(x[0])?' checked':'')+'><span style="flex:1'+(restePaid(x[0])?';opacity:.6':'')+'"><span'+(restePaid(x[0])?' style="text-decoration:line-through"':'')+'>'+esc(x[1])+'</span>'+(ae?'<br><span class="small" style="color:var(--ok)">Payé : trouvé dans Tricount (« '+esc(ae.title)+' », '+esc(ae.date)+')</span>':'')+'</span><b>'+thbTxt(x[2])+'</b><span class="small muted" style="flex:none;margin-left:6px">≈ '+eurTxt(x[2]/r)+'</span></label>';});
   h+='<p class="small" style="margin-top:4px">Reste : <b>'+thbTxt(resteTHB())+' ≈ '+eurTxt(resteTHB()/r)+'</b></p>';
   h+='<label class="small" style="display:block;margin-top:10px">Repas pour deux par jour restant (€)<input type="number" inputmode="decimal" data-a="bud" data-k="foodDay" value="'+esc(B.foodDay!=null?B.foodDay:"")+'" placeholder="'+f.foodDay+'"></label>';
   return h+'</div></details>';
@@ -1785,6 +1800,61 @@ function aiExpCards(m,i){
     h+='<div class="prop"><b>Liste Tricount lue : '+m.tcl.length+' dépense(s)</b> · '+eurTxt(tt)+'<div class="row" style="margin-top:6px"><button class="btn" data-a="tclcompare" data-i="'+i+'">Comparer avec l’app</button></div></div>';
   }
   return h;
+}
+
+
+/* --- bloc BUDGET_MODIF : l’assistant propose des changements de réglages du budget --- */
+var BUD_FIELDS={objectif:"objectif",total:"objectif",maximum:"maximum",max:"maximum",jour:"jour",budget_jour:"jour",categorie:"categorie","catégorie":"categorie",poste_jour:"poste_jour",repas_jour:"repas_jour",reste_ajout:"reste_ajout",reste_modif:"reste_modif",reste_paye:"reste_paye","reste_payé":"reste_paye",reste_suppr:"reste_suppr"};
+function budNum(v){var n=parseFloat(String(v).replace(",","."));return isFinite(n)?Math.round(n*100)/100:NaN;}
+function budDayGroup(k){return DAY_GROUPS.filter(function(g){return g[0]===k;})[0]||null;}
+function budPreview(o){
+  var B=S.budget||{},f=BUD_FIELDS[String(o.champ||"").toLowerCase()],r=S.set.rate||37.71,v=budNum(o.valeur),k=String(o.cle||o.key||"").toLowerCase(),it,dB=budgetStats().dailyB;
+  var bad=function(t){return {ok:false,txt:t};},euro=function(x){return x===""||x==null||!isFinite(parseFloat(x))?"—":eurTxt(parseFloat(x));};
+  if(!f)return bad("Réglage inconnu : "+o.champ);
+  if(f==="objectif"||f==="maximum"||f==="jour"||f==="repas_jour"){if(!(v>=0))return bad("Montant invalide pour « "+o.champ+" »");
+    var key={objectif:"total",maximum:"max",jour:"daily",repas_jour:"foodDay"}[f],lbl={objectif:"Objectif du voyage",maximum:"Maximum du voyage",jour:"Budget du jour (hors gros paiements)",repas_jour:"Repas pour deux par jour"}[f];
+    return {ok:true,f:f,key:key,v:v,txt:lbl+" : "+euro(f==="jour"?(B.daily||dB):B[key])+" → "+eurTxt(v)};}
+  if(f==="categorie"){if(!CATN[k])return bad("Catégorie inconnue : "+k);if(!(v>=0))return bad("Montant invalide pour "+catName(k));return {ok:true,f:f,k:k,v:v,txt:"Budget "+catName(k)+" : "+euro(B.cats&&B.cats[k])+" → "+eurTxt(v)};}
+  if(f==="poste_jour"){var g=budDayGroup(k);if(!g)return bad("Poste du jour inconnu : "+k);if(!(v>=0))return bad("Montant invalide pour "+g[1]);return {ok:true,f:f,k:k,v:v,txt:"Budget du jour « "+g[1]+" » : "+eurTxt(dayGroupBudget(g,dB))+" → "+eurTxt(v)};}
+  if(f==="reste_ajout"){var m=budNum(o.montant!=null?o.montant:o.valeur),cu=String(o.devise||"THB").toUpperCase(),lab=String(o.libelle||o.titre||"").trim().slice(0,80),ct=String(o.categorie||"transport").toLowerCase();
+    if(!lab)return bad("Libellé manquant pour le reste à payer");if(!(m>0))return bad("Montant invalide pour « "+lab+" »");if(!CATN[ct])ct="autre";
+    var thb=Math.round(cu==="EUR"?m*r:m);return {ok:true,f:f,lab:lab,thb:thb,cat:ct,txt:"Reste à payer + « "+lab+" » : "+thbTxt(thb)+" ≈ "+eurTxt(thb/r)+" ("+catName(ct)+")"};}
+  it=resteItems().filter(function(x){return x[0]===k;})[0];
+  if(!it)return bad("Poste du reste à payer inconnu : "+k);
+  if(f==="reste_modif"){var m2=budNum(o.montant!=null?o.montant:o.valeur),cu2=String(o.devise||"THB").toUpperCase();if(!(m2>=0))return bad("Montant invalide pour « "+it[1]+" »");var t2=Math.round(cu2==="EUR"?m2*r:m2);return {ok:true,f:f,k:k,thb:t2,txt:"Reste à payer « "+it[1]+" » : "+thbTxt(it[2])+" → "+thbTxt(t2)};}
+  if(f==="reste_paye"){var on=!(o.valeur===false||/^(non|false|0)$/i.test(String(o.valeur)));return {ok:true,f:f,k:k,on:on,txt:"« "+it[1]+" » : "+(on?"marqué payé":"remis à payer")};}
+  return {ok:true,f:"reste_suppr",k:k,txt:"Retirer « "+it[1]+" » ("+thbTxt(it[2])+") du reste à payer"};
+}
+function budApply(list){
+  var P=(list||[]).map(budPreview).filter(function(p){return p.ok;});if(!P.length){toast("Aucun changement valide");return null;}
+  if(!backup("Avant changements du budget proposés par l’assistant"))return null;
+  var B=S.budget=S.budget||{};
+  P.forEach(function(p){
+    if(p.key){B[p.key]=p.v;if(p.f==="repas_jour"){B.dcat=B.dcat||{};B.dcat.nourriture=p.v;}}
+    else if(p.f==="categorie"){B.cats=B.cats||{};B.cats[p.k]=p.v;}
+    else if(p.f==="poste_jour"){B.dcat=B.dcat||{};B.dcat[p.k]=p.v;}
+    else if(p.f==="reste_ajout"){B.resteExtra=B.resteExtra||[];B.resteExtra.push({k:"x"+Date.now().toString(36)+Math.random().toString(36).slice(2,5),label:p.lab,thb:p.thb,cat:p.cat,from:dateKey(nowMs(),TRIP_TZ)});}
+    else if(p.f==="reste_modif"){B.resteAmt=B.resteAmt||{};B.resteAmt[p.k]=p.thb;}
+    else if(p.f==="reste_paye"){B.restePaid=B.restePaid||{};B.restePaid[p.k]=p.on;}
+    else if(p.f==="reste_suppr"){B.resteExtra=(B.resteExtra||[]).filter(function(e){return e.k!==p.k;});if(TC_FORECAST.reste.some(function(x){return x[0]===p.k;})){B.resteRemoved=B.resteRemoved||{};B.resteRemoved[p.k]=true;}if(B.restePaid)delete B.restePaid[p.k];}
+  });
+  if(B.resteTHB!=null||P.some(function(p){return /^reste_/.test(p.f);}))B.resteTHB=resteTHB();
+  save();resteAuto();toast(P.length+" changement(s) du budget appliqué(s)");return P.length+" changement(s) du budget appliqué(s)";
+}
+function budCard(m,i){
+  if(!m.bud||!m.bud.length)return "";
+  var P=m.bud.map(budPreview);
+  var h='<div class="prop"><b>Changements du budget proposés ('+P.length+')</b><ul class="small">'+P.map(function(p){return '<li'+(p.ok?'':' style="color:var(--alert)"')+'>'+esc(p.txt)+'</li>';}).join("")+'</ul>';
+  h+=m.budApplied?'<p class="small" style="color:'+(m.budApplied==="Ignorée"?'var(--muted)':'var(--ok)')+';font-weight:700">'+esc(m.budApplied)+'</p>':'<div class="row"><button class="btn" data-a="budapply" data-i="'+i+'">Appliquer</button><button class="btn alt" data-a="budignore" data-i="'+i+'">Ignorer</button></div>';
+  return h+'</div>';
+}
+function budgetSettingsContext(){
+  var B=S.budget||{},r=S.set.rate||37.71,dB=budgetStats().dailyB,L=["","RÉGLAGES DU BUDGET (modifiables avec le bloc BUDGET_MODIF) :"];
+  L.push("objectif = "+(B.total||"—")+" € ; maximum = "+(B.max||"—")+" € ; jour (budget du jour hors gros paiements) = "+Math.round(dB*100)/100+" € ; repas_jour (repas pour deux par jour restant) = "+(B.foodDay!=null?B.foodDay:"—")+" €.");
+  L.push("categorie (budget du voyage par catégorie, clé = montant) : "+CATS.map(function(c){return c[0]+" = "+(B.cats&&B.cats[c[0]]!=null&&B.cats[c[0]]!==""?B.cats[c[0]]:"—");}).join(" ; ")+".");
+  L.push("poste_jour (budget du jour par poste, clé = montant) : "+DAY_GROUPS.map(function(g){return g[0]+" ("+g[1]+") = "+Math.round(dayGroupBudget(g,dB)*100)/100;}).join(" ; ")+".");
+  var R=resteItems();L.push("Reste à payer (clé | libellé | THB | payé) : "+(R.length?R.map(function(x){return x[0]+" | "+x[1]+" | "+x[2]+" | "+(restePaid(x[0])?"oui":"non");}).join(" ; "):"aucun")+". Total restant : "+resteTHB()+" THB ≈ "+Math.round(resteTHB()/r)+" €.");
+  return L.join("\n");
 }
 
 /* ---------- boucle ---------- */
