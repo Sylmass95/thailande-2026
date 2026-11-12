@@ -762,10 +762,10 @@ function aiSend(text,speak){
   AI.busy=true;AI.live="";saveAi();render(true);window.scrollTo(0,document.body.scrollHeight);
   getPosOnce(function(){
     var rules=AI_RULES.concat([aiRestRule()]).join("\n")+"\n\n=== CONTEXTE DU VOYAGE ===\n"+tripContext()+"\n=== FIN DU CONTEXTE ===";
-    var hist=AI.msgs.slice(-12).map(function(m){var c=m.content;if(m.prop)c+="\n[Bloc PROGRAMME proposé pour le(s) jour(s) "+m.prop.map(function(v){return v.n;}).join(", ")+" : "+(m.applied==="ok"?"appliqué":m.applied==="no"?"ignoré":"en attente")+"]";if(m.exp)c+="\n[Bloc DEPENSES proposé : "+(m.expApplied?"ajouté":"en attente")+"]";return {role:m.role,content:c};});
+    var hist=AI.msgs.slice(-12).map(function(m){var c=m.content;if(m.prop)c+="\n[Bloc PROGRAMME proposé pour le(s) jour(s) "+m.prop.map(function(v){return v.n;}).join(", ")+" : "+(m.applied==="ok"?"appliqué":m.applied==="no"?"ignoré":"en attente")+"]";if(m.exp)c+="\n[Bloc DEPENSES proposé : "+(m.expApplied?"ajouté":"en attente")+"]";if(m.mod)c+="\n[Bloc DEPENSES_MODIF proposé ("+m.mod.length+") : "+(m.modApplied||"en attente")+"]";if(m.del)c+="\n[Bloc DEPENSES_SUPPR proposé ("+m.del.length+") : "+(m.delApplied||"en attente")+"]";if(m.tcl)c+="\n[Liste Tricount extraite : "+m.tcl.length+" dépenses]";return {role:m.role,content:c};});
     var finish=function(out,err){
       AI.busy=false;AI.ctl=null;
-      if(out){var ex=aiExtract(out);out=ex.clean;AI.msgs.push({role:"assistant",content:ex.clean||"(proposition ci-dessous)",prop:ex.prop,exp:ex.exp,err:ex.err});saveAi();}
+      if(out){var ex=aiExtract(out);out=ex.clean;AI.msgs.push({role:"assistant",content:ex.clean||"(proposition ci-dessous)",prop:ex.prop,exp:ex.exp,mod:ex.mod,del:ex.del,tcl:ex.tcl,err:ex.err});saveAi();}
       if(err)toast(err);
       render(true);window.scrollTo(0,document.body.scrollHeight);
       if(out&&speak){startQueue({title:"Assistant",sub:"Audio guide personnalisé"},[{t:"",x:aiPlain(out)}],0);}
@@ -817,14 +817,15 @@ function progApply(list){
 function progUndo(n){var o=S.prog[n];if(!o)return;if(o.prev)S.prog[n]=o.prev;else delete S.prog[n];save();rebuildProgram();if(NATIVE)scheduleAll();}
 
 /* ====== BUDGET ====== */
-var CATS=[["transport","Transport"],["nourriture","Nourriture"],["excursions","Excursions et visites"],["hebergement","Hébergement"],["bienetre","Massages et bien-être"],["shopping","Shopping"],["autre","Autre"]];
+var CATS=[["vols","Vols"],["transport","Transport"],["nourriture","Nourriture"],["excursions","Excursions et visites"],["hebergement","Hébergement"],["bienetre","Massages et bien-être"],["shopping","Shopping"],["autre","Autre"]];
 var CATN={};CATS.forEach(function(c){CATN[c[0]]=c[1];});
-function toEur(e){return e.cur==="EUR"?e.amt:e.amt/(S.set.rate||37.71);}
+/* valeur en euros : celle de Tricount si connue (e.eur), sinon conversion au taux des réglages */
+function toEur(e){if(typeof e.eur==="number"&&isFinite(e.eur))return e.eur;return e.cur==="THB"?e.amt/(S.set.rate||37.71):e.amt;}
 function eurTxt(v){var r=Math.round(v*100)/100;if(r===0)r=0;return r.toLocaleString("fr-FR",{minimumFractionDigits:0,maximumFractionDigits:2})+" €";}
 function thbTxt(v){return Math.round(v).toLocaleString("fr-FR")+" THB";}
 function guessCat(title,cat){
   var s=((cat||"")+" "+(title||"")).toLowerCase();
-  var R=[["transport",/transport|taxi|grab|bolt|tuk|bateau|boat|longtail|ferry|train|bus|minivan|songthaew|vol |flight|essence|parking|transfert|chauffeur/],
+  var R=[["vols",/\bvols?\b|flight|avion|airasia|qatar|nok ?air|thai airways|bangkok airways/],["transport",/transport|taxi|grab|bolt|tuk|bateau|boat|longtail|ferry|train|bus|minivan|songthaew|essence|parking|transfert|chauffeur/],
    ["bienetre",/massage|spa|bien.?[êe]tre/],
    ["nourriture",/food|nourriture|restau|repas|d[ée]jeuner|d[îi]ner|dinner|lunch|breakfast|meal|petit.d[ée]j|caf[ée]|coffee|boisson|drink|bi[èe]re|beer|street|march[ée]|snack|eau|water|7.?eleven|courses|supermarch|pad thai|curry/],
    ["excursions",/excursion|visite|temple|wat |entr[ée]e|ticket|billet|parc|park|tour|activit|kayak|snorkel|plong|atv|canyon|safari|mus[ée]e/],
@@ -837,8 +838,10 @@ function expKey(e){return e.date+"|"+e.title.toLowerCase()+"|"+Math.round(e.amt*
 function expAdd(list,src){
   var have={},added=0;S.exp.forEach(function(e){have[expKey(e)]=1;});
   list.forEach(function(e){
-    var amt=Math.abs(parseFloat(e.amt));if(!(amt>0))return;
-    var x={id:"e"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),date:/^\d{4}-\d{2}-\d{2}$/.test(e.date)?e.date:dateKey(nowMs(),TRIP_TZ),title:String(e.title||"Dépense").slice(0,100),amt:Math.round(amt*100)/100,cur:e.cur==="EUR"?"EUR":"THB",cat:CATN[e.cat]?e.cat:guessCat(e.title,""),src:src||"manuel"};
+    var amt=parseFloat(e.amt);if(!isFinite(amt)||!amt)return;
+    var cu=String(e.cur||"THB").toUpperCase();cu=/^[A-Z]{3}$/.test(cu)?cu:"THB";
+    var x={id:"e"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),date:/^\d{4}-\d{2}-\d{2}$/.test(e.date)?e.date:dateKey(nowMs(),TRIP_TZ),title:String(e.title||"Dépense").slice(0,100),amt:Math.round(amt*100)/100,cur:cu,cat:CATN[e.cat]?e.cat:guessCat(e.title,""),src:src||"manuel"};
+    if(e.eur!=null&&isFinite(parseFloat(e.eur)))x.eur=Math.round(parseFloat(e.eur)*100)/100;
     if(have[expKey(x)])return;have[expKey(x)]=1;S.exp.push(x);added++;
   });
   save();return added;
@@ -858,8 +861,10 @@ function budgetContext(){
   if(b.perDay!=null)L.push("Pour tenir l’objectif : environ "+Math.round(b.perDay)+" € par jour pour deux ; pour rester sous le maximum : "+Math.round(b.perDayMax)+" € par jour. Gros paiements encore prévus : "+Math.round(b.planned)+" € ("+BIG_PLANNED.map(function(p){return p[1]+" "+p[2]+" THB";}).join(", ")+"). Aide les voyageurs à tenir l’objectif avec des conseils concrets (street food, minivans partagés, retraits d’argent groupés).");
   L.push("Dépensé au total : "+Math.round(b.tot)+" € ; aujourd’hui : "+Math.round(b.day)+" €"+(b.left!=null?" ; reste : "+Math.round(b.left)+" € pour "+b.daysLeft+" jours":"")+".");
   CATS.forEach(function(c){if(b.cats[c[0]]||(B.cats&&B.cats[c[0]]))L.push("- "+c[1]+" : "+Math.round(b.cats[c[0]]||0)+" €"+(B.cats&&B.cats[c[0]]?" sur "+B.cats[c[0]]+" € prévus":""));});
-  var last=S.exp.slice(-15).map(function(e){return e.date+" "+e.title+" "+e.amt+" "+e.cur+" ("+e.cat+")";});
-  if(last.length)L.push("Dernières dépenses : "+last.join(" ; "));
+  var inc=!B||B.includePre!==false;
+  if(S.exp.length){L.push("","DÉPENSES DE L’APP ("+S.exp.length+", total compté "+Math.round(sumEur(expActive())*100)/100+" €) — identifiant | date | titre | montant devise | ≈ euros | catégorie | source :");
+    S.exp.slice().sort(function(a,c){return a.date<c.date?-1:a.date>c.date?1:0;}).forEach(function(e){L.push(e.id+" | "+e.date+" | "+e.title+" | "+e.amt+" "+e.cur+" | "+Math.round(toEur(e)*100)/100+" € | "+e.cat+" | "+(e.src||"manuel")+(e.tid?" (Tricount)":"")+(e.src==="roadbook"&&!inc?" (non comptée)":""));});}
+  if(S.tcSync&&S.tcSync.totalAll!=null)L.push("Dernier total lu dans Tricount : "+S.tcSync.totalAll+" €.");
   L.push("","IDENTIFIANTS UTILISABLES DANS UN BLOC PROGRAMME :");
   L.push("Sites (audio guide) : "+SITES.map(function(s){return s.id+" = "+s.name;}).join(" ; "));
   L.push("Trajets (prix) : "+Object.keys(LEGS).map(function(k){return k+" = "+LEGS[k].title;}).join(" ; "));
@@ -917,7 +922,7 @@ function vTricount2(){
   CATS.forEach(function(c){var v=b.cats[c[0]]||0,cb=B.cats&&parseFloat(B.cats[c[0]]);if(!v&&!cb)return;h+='<div class="bcat"><div class="row" style="justify-content:space-between"><span>'+esc(c[1])+'</span><b>'+eurTxt(v)+(cb?' / '+eurTxt(cb):'')+'</b></div>'+bar(v,cb||b.tot)+'</div>';});
   h+='</div></div>';
   /* ajouter une dépense */
-  h+='<div class="card"><h3>Ajouter une dépense</h3><div class="row"><input type="number" inputmode="decimal" id="ex-amt" placeholder="Montant" style="flex:1;min-width:110px"><select id="ex-cur" style="width:auto;flex:0 0 90px"><option>THB</option><option>EUR</option></select></div>'
+  h+='<div class="card"><h3>Ajouter une dépense</h3><div class="row"><input type="number" step="any" inputmode="decimal" id="ex-amt" placeholder="Montant (négatif = correction)" style="flex:1;min-width:110px"><select id="ex-cur" style="width:auto;flex:0 0 90px"><option>THB</option><option>EUR</option></select></div>'
    +'<input type="text" id="ex-title" placeholder="Quoi ? (ex. : taxi, déjeuner, massage)" style="margin-top:8px" class="txt"><div class="row" style="margin-top:8px"><select id="ex-cat" style="flex:1">'+CATS.map(function(c){return '<option value="'+c[0]+'">'+esc(c[1])+'</option>';}).join("")+'</select><input type="date" id="ex-date" value="'+b.today+'" style="flex:1"></div>'
    +'<div class="row" style="margin-top:10px"><button class="btn" data-a="expadd">Ajouter</button><button class="btn alt" data-a="tcshot">Capture Tricount → Assistant</button></div></div>';
   /* import Tricount */
@@ -946,13 +951,19 @@ function vTricount2(){
 AI_RULES.push(
 "MODIFIER LE PROGRAMME : uniquement si l’utilisateur le demande explicitement (par exemple « mets à jour le programme », « applique », « modifie la journée », « ajoute au programme »). Sinon, propose en texte sans bloc. Quand c’est demandé, explique le changement en deux ou trois phrases, puis termine la réponse par ce bloc, sans rien après :\n<<<PROGRAMME\n{\"jours\":[{\"jour\":3,\"note\":\"…\",\"etapes\":[{\"heure\":\"08:00\",\"titre\":\"…\",\"detail\":\"…\",\"type\":\"visit|transport|meal|rest|pratique\",\"site\":\"identifiant de site ou null\",\"trajet\":\"identifiant de trajet ou null\"}],\"rappels\":[{\"heure\":\"08:45\",\"titre\":\"…\",\"texte\":\"…\"}]}]}\nPROGRAMME>>>\nLe numéro de jour va de 1 à 15. Le bloc remplace TOUTES les étapes du jour : inclus aussi celles qui ne changent pas. Heures en HH:MM, heure locale. Mets « rappels » seulement pour remplacer les rappels de ce jour. N’utilise que les identifiants listés dans le contexte. L’utilisateur verra un bouton pour appliquer ou ignorer.",
 "AJOUTER DES DÉPENSES : si l’utilisateur demande d’ajouter des dépenses au budget (texte, ticket, capture d’écran de Tricount), liste-les brièvement puis termine par :\n<<<DEPENSES\n[{\"date\":\"2026-11-07\",\"titre\":\"…\",\"montant\":120,\"devise\":\"THB\",\"categorie\":\"transport|nourriture|excursions|hebergement|bienetre|shopping|autre\"}]\nDEPENSES>>>\nPour Tricount, prends le montant total de chaque dépense, ignore les remboursements et indique la devise affichée.",
-"BUDGET : utilise les chiffres du contexte pour dire si le budget du jour ou du voyage est respecté, combien il reste et par catégorie."
+"BUDGET : utilise les chiffres du contexte pour dire si le budget du jour ou du voyage est respecté, combien il reste et par catégorie.",
+"CORRIGER DES DÉPENSES : la liste complète des dépenses de l’app est dans le contexte, avec leur identifiant. Tricount est la référence. Si l’utilisateur demande de corriger ou de supprimer des dépenses (doublon, mauvais montant, mauvaise catégorie), explique en deux ou trois phrases puis termine par l’un ou les deux blocs, sans rien après :\n<<<DEPENSES_MODIF\n[{\"id\":\"…\",\"champ\":\"montant|devise|titre|date|categorie|payeur\",\"valeur\":…}]\nDEPENSES_MODIF>>>\n<<<DEPENSES_SUPPR\n[\"id1\",\"id2\"]\nDEPENSES_SUPPR>>>\nN’utilise que des identifiants présents dans le contexte. Un montant est un nombre (négatif autorisé pour une correction). L’utilisateur verra un aperçu et un bouton pour appliquer ou ignorer.",
+"LISTE TRICOUNT : si l’utilisateur envoie une capture de Tricount pour la comparer ou la synchroniser avec l’app, recopie toutes les dépenses visibles (montant total, devise affichée, sans les remboursements) dans ce bloc, sans rien après :\n<<<TRICOUNT_LISTE\n[{\"date\":\"2026-11-07\",\"titre\":\"…\",\"montant\":120,\"devise\":\"THB\",\"payeur\":\"…\"}]\nTRICOUNT_LISTE>>>\nL’app comparera elle-même avec ses dépenses."
 );
 function aiExtract(text){
-  var out={clean:text,prop:null,exp:null,err:null};
+  var out={clean:text,prop:null,exp:null,mod:null,del:null,tcl:null,err:null};
+  var jb=function(tag){var r=new RegExp("<<<"+tag+"\\s*([\\s\\S]*?)\\s*"+tag+">>>").exec(text);if(!r)return undefined;out.clean=out.clean.replace(r[0],"").trim();try{var v=JSON.parse(r[1].replace(/^```(json)?|```$/g,""));return Array.isArray(v)?v:[v];}catch(e){out.err="Bloc "+tag+" illisible : "+e.message;return null;}};
+  var md=jb("DEPENSES_MODIF");if(md)out.mod=md.slice(0,200).map(function(o){return {id:String(o.id||""),champ:String(o.champ||o.field||"").toLowerCase(),valeur:o.valeur!=null?o.valeur:o.value};}).filter(function(o){return o.id&&o.champ;});
+  var dl=jb("DEPENSES_SUPPR");if(dl)out.del=dl.slice(0,200).map(function(o){return String(o&&o.id?o.id:o);}).filter(Boolean);
+  var tl=jb("TRICOUNT_LISTE");if(tl)out.tcl=tl.slice(0,400).filter(function(o){return !RC_SKIP.test(String(o.titre||o.title||""));}).map(function(o){return {date:o.date,title:o.titre||o.title,amt:parseFloat(o.montant!=null?o.montant:o.amount),cur:String(o.devise||o.currency||"EUR").toUpperCase().replace("€","EUR").replace("฿","THB"),eur:o.euros!=null?o.euros:null,payer:o.payeur||o.payer||""};}).filter(function(o){return isFinite(o.amt)&&o.amt;});
   var m=/<<<PROGRAMME\s*([\s\S]*?)\s*PROGRAMME>>>/.exec(text);
   if(m){out.clean=out.clean.replace(m[0],"").trim();try{var j=JSON.parse(m[1].replace(/^```(json)?|```$/g,""));var days=Array.isArray(j)?j:(j.jours||[j]);out.prop=days.map(progValidate);}catch(e){out.err="Proposition de programme illisible : "+e.message;}}
-  var x=/<<<DEPENSES\s*([\s\S]*?)\s*DEPENSES>>>/.exec(text);
+  var x=/<<<DEPENSES\s*\n?\s*(\[[\s\S]*?)\s*DEPENSES>>>/.exec(out.clean);
   if(x){out.clean=out.clean.replace(x[0],"").trim();try{var arr=JSON.parse(x[1].replace(/^```(json)?|```$/g,""));if(!Array.isArray(arr))arr=[arr];out.exp=arr.slice(0,100).map(function(e){return {date:parseDateStr(e.date)||dateKey(nowMs(),TRIP_TZ),title:String(e.titre||e.title||"Dépense"),amt:parseFloat(e.montant!=null?e.montant:e.amount),cur:/EUR/i.test(e.devise||e.currency||"")?"EUR":"THB",cat:CATN[e.categorie]?e.categorie:guessCat(e.titre||"","")};}).filter(function(e){return Math.abs(e.amt)>0;});}catch(e){out.err="Liste de dépenses illisible : "+e.message;}}
   return out;
 }
@@ -974,6 +985,7 @@ function propCard(m,i){
     else h+='<div class="row"><button class="btn" data-a="expapply" data-i="'+i+'">Ajouter au budget</button></div>';
     h+='</div>';
   }
+  h+=aiExpCards(m,i);
   if(m.err)h+='<p class="small" style="color:var(--alert)">'+esc(m.err)+'</p>';
   return h;
 }
@@ -1017,7 +1029,7 @@ function budgetStats(){
   expActive().forEach(function(e){var v=toEur(e);tot+=v;if(e.pre)pre+=v;else if(e.date===today){if(v*rate>=BIG_THB)dayBig+=v;else day+=v;}cats[e.cat]=(cats[e.cat]||0)+v;});
   var tripDays=DAYS.filter(function(d){return d.n>1;}).length;
   var daysLeft=DAYS.filter(function(d){return d.date>=today&&d.n>1;}).length||1;
-  var planned=0;BIG_PLANNED.forEach(function(p){if(p[0]>today)planned+=p[2]/rate;});
+  var planned=0;if(B.resteTHB!=null&&B.resteTHB!=="")planned=(parseFloat(B.resteTHB)||0)/rate;else BIG_PLANNED.forEach(function(p){if(p[0]>today)planned+=p[2]/rate;});
   var T=parseFloat(B.total)||0,M=parseFloat(B.max)||0;
   var dailyB=parseFloat(B.daily)||(T?(T-pre)/tripDays:0);
   var left=T?T-tot:null,leftMax=M?M-tot:null;
@@ -1045,14 +1057,19 @@ function tcSync(silent,fresh,reset){
   fetch(aiBase()+"/api/tricount?link="+encodeURIComponent(link)+(fresh?"&fresh=1":""),{headers:aiHeaders()}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j&&j.error||("HTTP "+r.status));return j;});})
   .then(function(j){
     /* seules les dépenses à partir du début du voyage comptent (avant : réservations, déjà dans le budget) */
-    var all=j.expenses||[],exps=all.filter(function(x){return !/^\d{4}-\d{2}-\d{2}$/.test(x.date)||x.date>=tcFrom();});
+    var all=j.expenses||[],truth=!!(S.budget&&S.budget.tcTruth),exps=truth?all:all.filter(function(x){return !/^\d{4}-\d{2}-\d{2}$/.test(x.date)||x.date>=tcFrom();});
+    var totalAll=0;all.forEach(function(x){totalAll+=x.cur_tricount==="EUR"?x.amt_tricount:(x.cur==="EUR"?x.amt:x.cur==="THB"?x.amt/(S.set.rate||37.71):x.amt_tricount||0);});
     var prev={},first=!!reset||!S.exp.some(function(e){return e.tid;});S.exp.forEach(function(e){if(e.tid)prev[e.tid]=e;});
     var added=exps.filter(function(x){return !prev[x.tid];});
     S.exp=S.exp.filter(function(e){return !e.tid;});
-    exps.forEach(function(x){var p=prev[x.tid];var cur=/^(THB|EUR)$/.test(x.cur)?x.cur:(/^(THB|EUR)$/.test(x.cur_tricount)?x.cur_tricount:"EUR");var amt=cur===x.cur?x.amt:x.amt_tricount;
-      S.exp.push({id:"t"+x.tid,tid:x.tid,date:/^\d{4}-\d{2}-\d{2}$/.test(x.date)?x.date:dateKey(nowMs(),TRIP_TZ),title:x.title,amt:amt,cur:cur,cat:(p&&p.catUser)?p.cat:tcCat(x),catUser:!!(p&&p.catUser),payer:x.payer||"",src:"tricount",when:x.when||""});});
+    exps.forEach(function(x){var p=prev[x.tid];var cur=/^[A-Z]{3}$/.test(x.cur||"")?x.cur:(x.cur_tricount||"EUR");var amt=cur===x.cur?x.amt:x.amt_tricount;
+      var dt=/^\d{4}-\d{2}-\d{2}$/.test(x.date)?x.date:dateKey(nowMs(),TRIP_TZ);
+      /* une dépense importée à la main (liste collée, CSV, assistant) qui correspond est remplacée par celle de Tricount */
+      S.exp=S.exp.filter(function(e){return e.tid||!(e.src==="import"||e.src==="assistant")||e.date!==dt||e.cur!==cur||Math.abs(e.amt-amt)>0.01;});
+      var ne={id:"t"+x.tid,tid:x.tid,date:dt,title:x.title,amt:amt,cur:cur,cat:(p&&p.catUser)?p.cat:tcCat(x),catUser:!!(p&&p.catUser),payer:x.payer||"",src:"tricount",when:x.when||""};
+      if(x.cur_tricount==="EUR"&&isFinite(x.amt_tricount))ne.eur=x.amt_tricount;if(truth&&dt<tcFrom())ne.pre=true;S.exp.push(ne);});
     if(!first&&added.length)S.tcNew={at:Date.now(),ids:added.map(function(x){return x.tid;})};
-    S.tcSync={at:Date.now(),title:j.title||"",n:exps.length,skip:all.length-exps.length,currency:j.currency||""};save();
+    S.tcSync={at:Date.now(),title:j.title||"",n:exps.length,skip:all.length-exps.length,totalAll:Math.round(totalAll*100)/100,truth:truth,currency:j.currency||""};save();
     var nt=first?"":added.length?added.length+(added.length>1?" nouvelles dépenses":" nouvelle dépense")+" : "+added.slice(0,3).map(function(x){return x.title;}).join(", "):"Aucune nouvelle dépense dans Tricount";
     if(!silent)toast(first?exps.length+" dépense(s) lue(s) dans Tricount":nt);else if(added.length&&!first)toast("Tricount · "+nt);
   },function(e){TC.err=(e&&e.message)||"erreur";if(!silent)toast("Tricount : "+TC.err);})
@@ -1151,10 +1168,12 @@ function vTricount2(){
     if(!AI.tc&&AI.reach!=="pending"&&AI.mode!=="pending")h+='<p class="small" style="color:var(--alert);margin-bottom:8px">'+esc(tcWhyText())+' Puis touchez le bouton pour réessayer.</p>';
     h+='<div class="row"><button class="btn" data-a="tcsync"'+(TC.busy?" disabled":"")+'>'+(TC.busy?"Lecture en cours…":"Mettre à jour depuis Tricount")+'</button>'+(link?'<a class="cp" href="'+esc(link)+'" target="_blank" rel="noopener">Ouvrir Tricount</a>':'')+'</div>';
     h+='<p class="small muted" style="margin-top:6px">'+(S.tcSync?'Dernière lecture : '+esc(cap(fmt(S.tcSync.at,TRIP_TZ,{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",hourCycle:"h23"})))+' · '+S.tcSync.n+' dépense(s) depuis le '+esc(tcFromTxt())+(S.tcSync.skip?' ('+S.tcSync.skip+' antérieure'+(S.tcSync.skip>1?'s':'')+' ignorée'+(S.tcSync.skip>1?'s':'')+')':'')+(S.tcSync.title?' · « '+esc(S.tcSync.title)+' »':''):'Jamais synchronisé.')+(TC.err?'<br><span style="color:var(--alert)">'+esc(TC.err)+'</span>':'')+'</p>';
+    h+=tcCheckHtml();
   }else{
     h+='<p class="small">La lecture automatique de Tricount passe par l’API perso installée sur votre serveur Minix (version Docker). '+(NATIVE?'Dans l’APK, indiquez l’adresse du serveur dans Pratique → Réglages.':'Elle n’est pas disponible dans l’app Claude : utilisez la capture d’écran ci-dessous.')+'</p>';
   }
   h+='<div class="row" style="margin-top:8px"><button class="cp" data-a="tcshot">Capture Tricount → Assistant</button>'+(!link?'<a class="cp" href="'+TRICOUNT_PLAY+'" target="_blank" rel="noopener">Installer Tricount</a>':'')+'</div></div>';
+  h+=rcHtml();
   h+=tcRecentHtml();
   h+=dayExpHtml();
   /* voyage */
@@ -1162,7 +1181,8 @@ function vTricount2(){
   if(b.left!=null){
     h+='<p class="bnum'+(b.left<0?' over':'')+'">'+(b.left>=0?'Reste '+eurTxt(b.left):'Objectif dépassé de '+eurTxt(-b.left))+'</p><p class="small muted">Objectif '+eurTxt(parseFloat(B.total))+' · '+eurTxt(b.tot)+' engagés, dont '+eurTxt(b.pre)+' de réservations et '+eurTxt(b.onsite)+' dépensés sur place.</p>'+bar(b.tot,parseFloat(B.total));
     if(b.leftMax!=null)h+='<p class="small" style="margin-top:8px"><b>Maximum '+eurTxt(parseFloat(B.max))+'</b> : '+(b.leftMax>=0?'reste '+eurTxt(b.leftMax):'<span style="color:var(--alert)">dépassé de '+eurTxt(-b.leftMax)+'</span>')+'</p>'+bar(b.tot,parseFloat(B.max));
-    if(b.planned>0.5)h+='<p class="small muted" style="margin-top:8px">Gros paiements encore prévus : '+eurTxt(b.planned)+' (chauffeur Ayutthaya, transferts, ATV).</p>';
+    if(b.planned>0.5)h+='<p class="small muted" style="margin-top:8px">Reste à payer : '+eurTxt(b.planned)+' ('+(B.resteTHB!=null&&B.resteTHB!==""?esc(TC_FORECAST.resteLabel):'chauffeur Ayutthaya, transferts, ATV')+').</p>';
+    var fs=forecastStats(b);if(fs)h+='<p class="small" style="margin-top:8px"><b>Prévision fin de voyage : '+eurTxt(fs.end)+'</b> = '+eurTxt(b.tot)+' dépensés + '+eurTxt(fs.reste)+' à payer + '+fs.days+' jour'+(fs.days>1?'s':'')+' de nourriture ('+eurTxt(fs.food)+')'+(parseFloat(B.total)?' · objectif '+(fs.end<=parseFloat(B.total)?'tenu':'<span style="color:var(--alert)">dépassé de '+eurTxt(fs.end-parseFloat(B.total))+'</span>'):'')+'.</p>';
     if(b.perDay!=null){h+='<div class="prop" style="margin-top:10px"><p class="small"><b>Pour tenir 4 000 €</b> : '+(b.perDay>=0?'environ '+eurTxt(b.perDay)+' par jour pour deux ('+thbTxt(b.perDay*rate)+')':'<span style="color:var(--alert)">objectif déjà hors d’atteinte</span>')+'.<br><b>Pour rester sous 4 400 €</b> : '+(b.perDayMax>=0?'environ '+eurTxt(b.perDayMax)+' par jour ('+thbTxt(b.perDayMax*rate)+')':'<span style="color:var(--alert)">maximum déjà dépassé</span>')+'.</p><p class="small muted">Sur les '+b.daysLeft+' jours restants, aujourd’hui compris, après les gros paiements prévus.</p></div>';}
   }else h+='<p class="small">'+eurTxt(b.tot)+' au total.</p>';
   h+='<div style="margin-top:12px">';
@@ -1179,15 +1199,11 @@ function vTricount2(){
    +'<li><b>Entrées</b> : le Grand Palais, retiré du programme, économise environ 1 000 THB pour deux.</li>'
    +'</ul><p class="small muted" style="margin-top:6px">Avec ces choix, 4 000 € reste serré mais atteignable. Le maximum de 4 400 € laisse environ deux fois plus de marge par jour.</p></div></details>';
   /* ajout */
-  h+='<div class="card"><h3>Ajouter une dépense</h3><div class="row"><input type="number" inputmode="decimal" id="ex-amt" placeholder="Montant" style="flex:1;min-width:110px"><select id="ex-cur" style="width:auto;flex:0 0 90px"><option>THB</option><option>EUR</option></select></div>'
+  h+='<div class="card"><h3>Ajouter une dépense</h3><div class="row"><input type="number" step="any" inputmode="decimal" id="ex-amt" placeholder="Montant (négatif = correction)" style="flex:1;min-width:110px"><select id="ex-cur" style="width:auto;flex:0 0 90px"><option>THB</option><option>EUR</option></select></div>'
    +'<input type="text" id="ex-title" placeholder="Quoi ? (ex. : taxi, déjeuner, massage)" style="margin-top:8px" class="txt"><div class="row" style="margin-top:8px"><select id="ex-cat" style="flex:1">'+CATS.map(function(c){return '<option value="'+c[0]+'"'+(c[0]==="nourriture"?" selected":"")+'>'+esc(c[1])+'</option>';}).join("")+'</select><input type="date" id="ex-date" value="'+b.today+'" style="flex:1"></div>'
    +'<div class="row" style="margin-top:10px"><button class="btn" data-a="expadd">Ajouter</button></div><p class="small muted" style="margin-top:6px">Si vous utilisez Tricount, ajoutez plutôt vos dépenses dans Tricount puis synchronisez, pour éviter les doublons.</p></div>';
   /* liste */
-  var list=S.exp.slice().sort(function(a,c){return a.date<c.date?1:a.date>c.date?-1:0;});
-  h+='<details class="card"'+(UI.expOpen?' open':'')+' data-a="expdetails"><summary>Dépenses enregistrées ('+list.length+')</summary><div>';
-  if(!list.length)h+='<p class="small muted">Aucune dépense pour l’instant.</p>';
-  list.forEach(function(e){var off=e.src==="roadbook"&&S.budget&&S.budget.includePre===false;h+='<div class="kv" style="flex-wrap:wrap'+(off?';opacity:.45':'')+'"><span style="flex:1;min-width:140px"><b>'+esc(e.title)+'</b><br><span class="small muted">'+esc(e.date)+(e.src==="tricount"?" · Tricount"+(e.payer?" ("+esc(e.payer)+")":""):e.src==="assistant"?" · Assistant":e.src==="roadbook"?" · réservé (roadbook)":"")+'</span></span><span style="text-align:right"><b>'+(e.cur==="EUR"?eurTxt(e.amt):thbTxt(e.amt))+'</b><br><span class="small muted">'+(e.cur==="EUR"?thbTxt(e.amt*rate):eurTxt(toEur(e)))+'</span></span><select data-a="expcat" data-id="'+e.id+'" style="width:auto;min-height:36px;padding:4px 6px;font-size:14px">'+CATS.map(function(c){return '<option value="'+c[0]+'"'+(c[0]===e.cat?" selected":"")+'>'+esc(c[1])+'</option>';}).join("")+'</select>'+(e.tid?'':'<button class="cp" data-a="expdel" data-id="'+e.id+'" aria-label="Supprimer">Suppr.</button>')+'</div>';});
-  h+='</div></details>';
+  h+=expListHtml();
   /* réglages */
   h+='<details class="card"><summary>Définir le budget (en euros)</summary><div><p class="small muted" style="margin-bottom:8px">Prérempli d’après le roadbook : 3 228,21 € de vols, hôtels et excursions déjà réservés, objectif 4 000 € et maximum 4 400 € pour deux.</p><div class="row" style="margin-bottom:10px"><button class="'+(B.scen!=="max"?"btn":"btn alt")+'" data-a="budscen" data-v="obj">Répartition 4 000 €</button><button class="'+(B.scen==="max"?"btn":"btn alt")+'" data-a="budscen" data-v="max">Répartition 4 400 €</button></div><div class="row"><label style="flex:1">Objectif<input type="number" inputmode="decimal" data-a="bud" data-k="total" value="'+esc(B.total||"")+'"></label><label style="flex:1">Maximum<input type="number" inputmode="decimal" data-a="bud" data-k="max" value="'+esc(B.max||"")+'"></label></div><div class="row" style="margin-top:8px"><label style="flex:1">Par jour, hors gros paiements<input type="number" inputmode="decimal" data-a="bud" data-k="daily" value="'+esc(B.daily||"")+'" placeholder="auto"></label></div>'
    +'<p class="small" style="margin-top:10px"><b>Budget du jour par poste</b> (en euros, facultatif)</p><p class="small muted">Laissé vide : part du budget du jour (repas 50 %, transport 25 %, activités 15 %, massages 6 %, divers 4 %).</p>'
@@ -1195,6 +1211,8 @@ function vTricount2(){
   CATS.forEach(function(c){h+='<label style="display:block;margin-top:8px">'+esc(c[1])+'<input type="number" inputmode="decimal" data-a="bud" data-k="cat:'+c[0]+'" value="'+esc((B.cats&&B.cats[c[0]])||"")+'" placeholder="facultatif"></label>'+(ROADBOOK_BUDGET.hints[c[0]]?'<span class="small muted">'+esc(ROADBOOK_BUDGET.hints[c[0]])+'</span>':'');});
   h+='<label class="ck" style="margin-top:10px"><input type="checkbox" data-a="budpre"'+(B.includePre!==false?" checked":"")+'><span>Compter les réservations du roadbook (vols, hôtels, excursions). Décochez si elles sont déjà saisies dans Tricount.</span></label>';
   h+='<div class="row" style="margin-top:10px"><button class="cp" data-a="budseed">Recharger les valeurs du roadbook</button></div></div></details>';
+  h+=forecastHtml();
+  h+=backupHtml();
   return h;
 }
 
@@ -1332,8 +1350,26 @@ document.addEventListener("click",function(e){
     case "progundo":var ns=String(b.getAttribute("data-n")).split(",");ns.forEach(function(n){progUndo(parseInt(n,10));});AI.msgs.forEach(function(m){if(m.applied==="ok"&&m.prop&&m.prop.some(function(v){return ns.indexOf(String(v.n))>=0;}))m.applied="undone";});saveAi();toast("Modification annulée");render(true);break;
     case "progask":UI.tab="ai";AI.draft="Modifie le programme du jour "+b.getAttribute("data-n")+" et applique-le : ";render();window.scrollTo(0,document.body.scrollHeight);var pa=$("#ai-text");if(pa){pa.focus();pa.setSelectionRange(pa.value.length,pa.value.length);}break;
     case "expapply":var em=AI.msgs[parseInt(b.getAttribute("data-i"),10)];if(em&&em.exp){var na=expAdd(em.exp,"assistant");em.expApplied=na+" dépense(s) ajoutée(s) au budget"+(na<em.exp.length?" ("+(em.exp.length-na)+" doublon(s) ignoré(s))":"")+".";saveAi();render(true);}break;
-    case "expadd":var am=parseFloat(($("#ex-amt")||{}).value);if(!(am>0)){toast("Indiquez un montant");break;}var tt=(($("#ex-title")||{}).value||"").trim()||"Dépense";var cc=($("#ex-cat")||{}).value;expAdd([{amt:am,cur:($("#ex-cur")||{}).value,title:tt,cat:cc,date:($("#ex-date")||{}).value}],"manuel");toast("Dépense ajoutée");render(true);break;
-    case "expdel":S.exp=S.exp.filter(function(e){return e.id!==id;});save();UI.expOpen=true;render(true);break;
+    case "expadd":var am=parseFloat(($("#ex-amt")||{}).value);if(!isFinite(am)||!am){toast("Indiquez un montant (négatif pour une correction)");break;}var tt=(($("#ex-title")||{}).value||"").trim()||"Dépense";var cc=($("#ex-cat")||{}).value;expAdd([{amt:am,cur:($("#ex-cur")||{}).value,title:tt,cat:cc,date:($("#ex-date")||{}).value}],"manuel");toast("Dépense ajoutée");render(true);break;
+    case "expdel":expDelete(id);break;
+    case "expedit":UI.expEdit=UI.expEdit===id?null:id;UI.expOpen=true;render(true);break;
+    case "expsave":expSave(id);break;
+    case "expcancel":UI.expEdit=null;render(true);break;
+    case "bkpnow":if(backup("Sauvegarde manuelle"))toast("Sauvegarde faite");render(true);break;
+    case "bkpexport":copy(JSON.stringify({exp:S.exp,budget:S.budget},null,1));break;
+    case "bkprestore":backupRestore(parseInt(v,10));break;
+    case "bkpcopy":var bk=backupList()[parseInt(v,10)];if(bk)copy(JSON.stringify(bk,null,1));break;
+    case "rclive":RC.done=null;rcLive();break;
+    case "rcpaste":RC.paste=(($("#rc-paste")||{}).value||"");var rp=rcParse(RC.paste);if(rp.error){RC.err=rp.error;render(true);}else if(!rp.list.length){RC.err="Aucune dépense reconnue ("+rp.skipped+" ligne(s) ignorée(s)).";render(true);}else{rcLoad(rp.list,"paste");toast(rp.list.length+" dépense(s) lue(s)"+(rp.skipped?", "+rp.skipped+" ligne(s) ignorée(s)":""));}break;
+    case "rccsv":var rf=$("#rc-file");if(rf)rf.click();break;
+    case "rcshot":UI.tab="ai";AI.draft="Voici une capture de notre Tricount : extrais la liste complète des dépenses pour la comparer avec l’app.";render();var rsf=$("#ai-file");if(rsf)rsf.click();else toast("Photos non disponibles ici");break;
+    case "rcapply":rcApply();break;
+    case "rcall":if(RC.rows){RC.rows.forEach(function(r){if(r.kind===v)RC.sel[r.key]=id==="1";});var ys=window.scrollY;render(true);window.scrollTo(0,ys);}break;
+    case "rcclose":RC.rows=null;RC.done=null;RC.list=null;render(true);break;
+    case "fcapply":forecastApply();break;
+    case "tclcompare":var tm=AI.msgs[parseInt(b.getAttribute("data-i"),10)];if(tm&&tm.tcl)rcLoad(tm.tcl.map(function(o,k){return rcItem(o,k);}),"capture");break;
+    case "modapply":case "delapply":var mm=AI.msgs[parseInt(b.getAttribute("data-i"),10)];if(mm){var r1=a==="modapply"?aiModApply(mm.mod):aiDelApply(mm.del);if(r1!=null){if(a==="modapply")mm.modApplied=r1;else mm.delApplied=r1;saveAi();}render(true);}break;
+    case "modignore":case "delignore":var mi=AI.msgs[parseInt(b.getAttribute("data-i"),10)];if(mi){if(a==="modignore")mi.modApplied="Ignorée";else mi.delApplied="Ignorée";saveAi();render(true);}break;
     case "expclear":if(confirm("Effacer toutes les dépenses enregistrées ?")){S.exp=[];save();render(true);}break;
     case "tcsync":tcSyncNow();break;
     case "budscen":applyScenario(v);toast(v==="max"?"Répartition 4 400 € appliquée":"Répartition 4 000 € appliquée");render(true);break;
@@ -1363,6 +1399,8 @@ document.addEventListener("change",function(e){
   var el=e.target,a=el.getAttribute&&el.getAttribute("data-a");if(!a)return;
   if(a==="aifile"){var fl=el.files&&el.files[0];if(fl){AI.img=fl;if(AI.imgUrl){try{URL.revokeObjectURL(AI.imgUrl);}catch(e){}}AI.imgUrl=URL.createObjectURL(fl);var ta2=$("#ai-text");if(ta2)AI.draft=ta2.value;render(true);}return;}
   if(a==="aipos"){S.set.aiPos=el.checked;save();return;}
+  if(a==="rcsel"){RC.sel[el.getAttribute("data-k")]=el.checked;var y=window.scrollY;render(true);window.scrollTo(0,y);return;}
+  if(a==="rcfile"){var rcf=el.files&&el.files[0];if(!rcf)return;var rr=new FileReader();rr.onload=function(){var pr=rcParse(String(rr.result||""));if(pr.error||!pr.list.length){RC.err=pr.error||"Aucune dépense reconnue dans le fichier.";render(true);}else rcLoad(pr.list,"csv");};rr.readAsText(rcf);return;}
   if(a==="budpre"){S.budget=S.budget||{};S.budget.includePre=el.checked;save();render(true);return;}
   if(a==="expcat"){S.exp.forEach(function(x){if(x.id===el.getAttribute("data-id")){x.cat=el.value;x.catUser=true;}});save();UI.expOpen=true;render(true);return;}
   if(a==="bud"){var k=el.getAttribute("data-k"),val=el.value===""?"":parseFloat(el.value);S.budget=S.budget||{};if(k.indexOf("dcat:")===0){S.budget.dcat=S.budget.dcat||{};S.budget.dcat[k.slice(5)]=val;}else if(k.indexOf("cat:")===0){S.budget.cats=S.budget.cats||{};S.budget.cats[k.slice(4)]=val;}else S.budget[k]=val;save();render(true);return;}
@@ -1392,6 +1430,323 @@ document.addEventListener("input",function(e){
   if(a==="aidraft"){AI.draft=el.value;return;}
 });
 function reopen(){var ds=document.querySelectorAll("details.card");ds.forEach(function(d){if(d.querySelector("[data-a=cash]"))d.open=true;});}
+
+/* ====== BUDGET : sauvegardes, modification, synchronisation avec Tricount ====== */
+/* Affichage d’un montant dans sa devise d’origine, et sa contrepartie */
+function amtTxt(e){if(e.cur==="EUR")return eurTxt(e.amt);if(e.cur==="THB")return thbTxt(e.amt);return (Math.round(e.amt*100)/100).toLocaleString("fr-FR")+" "+(e.cur||"");}
+function altTxt(e){return e.cur==="EUR"?thbTxt(e.amt*(S.set.rate||37.71)):eurTxt(toEur(e));}
+function sumEur(list){var t=0;list.forEach(function(e){t+=toEur(e);});return t;}
+function catTotals(list){var c={};list.forEach(function(e){c[e.cat]=(c[e.cat]||0)+toEur(e);});return c;}
+function newExpId(p){return (p||"e")+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+
+/* --- sauvegardes des dépenses et du budget (15 dernières, sur le téléphone) --- */
+var BKEY="thai26-backups";
+function backupList(){try{return JSON.parse(localStorage.getItem(BKEY)||"[]")||[];}catch(e){return [];}}
+function backup(reason){
+  try{
+    var L=backupList();
+    L.unshift({at:Date.now(),reason:reason,exp:JSON.parse(JSON.stringify(S.exp)),budget:JSON.parse(JSON.stringify(S.budget||{})),n:S.exp.length,tot:Math.round(sumEur(expActive())*100)/100});
+    localStorage.setItem(BKEY,JSON.stringify(L.slice(0,15)));return true;
+  }catch(e){toast("Sauvegarde impossible : correction annulée ("+((e&&e.message)||e)+")");return false;}
+}
+function backupRestore(i){
+  var L=backupList(),b=L[i];if(!b)return;
+  if(!confirm("Restaurer la sauvegarde du "+cap(fmt(b.at,TRIP_TZ,{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}))+" ("+b.n+" dépenses, "+eurTxt(b.tot)+") ?\nLes données actuelles seront d’abord sauvegardées."))return;
+  if(!backup("Avant restauration"))return;
+  S.exp=b.exp;S.budget=b.budget;save();toast("Sauvegarde restaurée");render(true);
+}
+function backupHtml(){
+  var L=backupList(),h='<details class="card"><summary>Sauvegardes des dépenses ('+L.length+')</summary><div>';
+  h+='<p class="small muted">Une sauvegarde est faite automatiquement avant chaque correction (modification, suppression, synchronisation, budget). Les 15 dernières sont gardées sur ce téléphone.</p>';
+  h+='<div class="row" style="margin:8px 0"><button class="cp" data-a="bkpnow">Sauvegarder maintenant</button><button class="cp" data-a="bkpexport">Copier toutes les dépenses (JSON)</button></div>';
+  L.forEach(function(b,i){h+='<div class="kv"><span><b>'+esc(cap(fmt(b.at,TRIP_TZ,{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",hourCycle:"h23"})))+'</b><br><span class="small muted">'+esc(b.reason)+' · '+b.n+' dépenses · '+eurTxt(b.tot)+'</span></span><span class="row" style="flex:none"><button class="cp" data-a="bkprestore" data-v="'+i+'">Restaurer</button><button class="cp" data-a="bkpcopy" data-v="'+i+'">Copier</button></span></div>';});
+  if(!L.length)h+='<p class="small muted">Aucune sauvegarde pour l’instant.</p>';
+  return h+'</div></details>';
+}
+
+/* --- modifier ou supprimer une dépense --- */
+UI.expEdit=null;
+function expEditHtml(e){
+  var curs=["THB","EUR"];if(curs.indexOf(e.cur)<0)curs.push(e.cur);
+  return '<div class="prop" style="width:100%;margin-top:6px"><label class="small">Titre<input type="text" class="txt" id="ee-title" value="'+esc(e.title)+'"></label>'
+   +'<div class="row" style="margin-top:6px"><label class="small" style="flex:1">Montant (négatif = correction)<input type="number" step="any" inputmode="decimal" id="ee-amt" value="'+esc(e.amt)+'"></label><label class="small" style="flex:0 0 96px">Devise<select id="ee-cur">'+curs.map(function(c){return '<option'+(c===e.cur?' selected':'')+'>'+esc(c)+'</option>';}).join("")+'</select></label></div>'
+   +'<div class="row" style="margin-top:6px"><label class="small" style="flex:1">Date<input type="date" id="ee-date" value="'+esc(e.date)+'"></label><label class="small" style="flex:1">Catégorie<select id="ee-cat">'+CATS.map(function(c){return '<option value="'+c[0]+'"'+(c[0]===e.cat?' selected':'')+'>'+esc(c[1])+'</option>';}).join("")+'</select></label></div>'
+   +'<label class="small" style="display:block;margin-top:6px">Payé par<input type="text" class="txt" id="ee-payer" value="'+esc(e.payer||"")+'"></label>'
+   +(e.tid?'<p class="small muted" style="margin-top:6px">Dépense lue dans Tricount : corrigez-la aussi dans Tricount, sinon la prochaine lecture la remettra comme dans Tricount.</p>':'')
+   +'<div class="row" style="margin-top:8px"><button class="btn" data-a="expsave" data-id="'+esc(e.id)+'">Enregistrer</button><button class="btn alt" data-a="expcancel">Annuler</button></div></div>';
+}
+function expSave(id){
+  var e=S.exp.filter(function(x){return x.id===id;})[0];if(!e)return;
+  var amt=parseFloat(($("#ee-amt")||{}).value),cur=($("#ee-cur")||{}).value||e.cur;
+  if(!isFinite(amt)||amt===0){toast("Indiquez un montant (négatif autorisé)");return;}
+  if(!backup("Avant modification de « "+e.title+" »"))return;
+  if(amt!==e.amt||cur!==e.cur){if(cur==="EUR")e.eur=amt;else delete e.eur;}
+  e.title=(($("#ee-title")||{}).value||"").trim()||e.title;e.amt=Math.round(amt*100)/100;e.cur=cur;
+  var d=($("#ee-date")||{}).value;if(/^\d{4}-\d{2}-\d{2}$/.test(d))e.date=d;
+  var c=($("#ee-cat")||{}).value;if(CATN[c]&&c!==e.cat){e.cat=c;e.catUser=true;}
+  e.payer=(($("#ee-payer")||{}).value||"").trim();e.edited=Date.now();
+  save();UI.expEdit=null;toast("Dépense modifiée");render(true);
+}
+function expDelete(id){
+  var e=S.exp.filter(function(x){return x.id===id;})[0];if(!e)return;
+  if(!confirm("Supprimer « "+e.title+" » ("+amtTxt(e)+", "+e.date+") ?"+(e.tid?"\nAttention : elle vient de Tricount et reviendra à la prochaine lecture si elle n’est pas supprimée dans Tricount.":"")))return;
+  if(!backup("Avant suppression de « "+e.title+" »"))return;
+  S.exp=S.exp.filter(function(x){return x.id!==id;});save();UI.expOpen=true;toast("Dépense supprimée");render(true);
+}
+function expListHtml(){
+  var list=S.exp.slice().sort(function(a,c){return a.date<c.date?1:a.date>c.date?-1:0;}),inc=!S.budget||S.budget.includePre!==false;
+  var h='<details class="card"'+(UI.expOpen?' open':'')+' data-a="expdetails"><summary>Dépenses enregistrées ('+list.length+' · '+eurTxt(sumEur(expActive()))+')</summary><div>';
+  if(!list.length)h+='<p class="small muted">Aucune dépense pour l’instant.</p>';
+  list.forEach(function(e){
+    var off=e.src==="roadbook"&&!inc,src=e.src==="tricount"?"Tricount"+(e.payer?" ("+e.payer+")":""):e.src==="assistant"?"Assistant":e.src==="roadbook"?"réservé (roadbook)":e.src==="import"?"importée":"manuelle";
+    h+='<div class="kv" style="flex-wrap:wrap'+(off?';opacity:.45':'')+'"><span style="flex:1;min-width:140px"><b>'+esc(e.title)+'</b><br><span class="small muted">'+esc(e.date)+' · '+esc(catName(e.cat))+' · '+esc(src)+(e.pre?' · réservation':'')+'</span></span><span style="text-align:right"><b'+(e.amt<0?' style="color:var(--ok)"':'')+'>'+amtTxt(e)+'</b><br><span class="small muted">'+altTxt(e)+'</span></span>'
+      +'<span class="row" style="flex:none"><button class="cp" data-a="expedit" data-id="'+esc(e.id)+'">Modifier</button><button class="cp" data-a="expdel" data-id="'+esc(e.id)+'" aria-label="Supprimer">Suppr.</button></span>'
+      +(UI.expEdit===e.id?expEditHtml(e):'')+'</div>';
+  });
+  return h+'</div></details>';
+}
+
+/* --- synchronisation avec Tricount : comparer, valider ligne par ligne, corriger --- */
+var RC={list:null,src:"",rows:null,sel:{},busy:false,err:"",done:null,paste:"",open:false};
+/* dépense Tricount normalisée : montant et devise d’origine, valeur en euros de Tricount si connue */
+function rcItem(o,k){
+  var amt=parseFloat(o.amt),cur=String(o.cur||"EUR").toUpperCase(),eur=o.eur!=null&&isFinite(parseFloat(o.eur))?Math.round(parseFloat(o.eur)*100)/100:(cur==="EUR"?amt:null);
+  var x={key:o.tid?"t:"+o.tid:"p:"+k,tid:o.tid||null,date:parseDateStr(o.date)||dateKey(nowMs(),TRIP_TZ),title:String(o.title||"Dépense").slice(0,100),amt:Math.round(amt*100)/100,cur:cur,payer:o.payer||"",when:o.when||""};
+  if(eur!=null)x.eur=eur;
+  x.cat=CATN[o.cat]?o.cat:(o.tc?tcCat(o.tc):guessCat(x.title,o.catHint||""));
+  return x;
+}
+function rcFromBridge(all){return all.map(function(x,k){var eur=x.cur_tricount==="EUR"?x.amt_tricount:(x.cur==="EUR"?x.amt:null);return rcItem({tid:x.tid,date:x.date,title:x.title,amt:x.amt,cur:x.cur,eur:eur,payer:x.payer,when:x.when,tc:x},k);});}
+var RC_SKIP=/rembours|reimburs|virement|transfert d.argent|money transfer|paid back|balance|règlement|reglement|equilibr/i;
+/* texte collé : CSV (export Tricount) ou une dépense par ligne (« 12/11 Taxi 120 THB ») */
+function rcParse(text){
+  text=String(text||"").replace(/^﻿/,"");var lines=text.split(/\r?\n/).filter(function(l){return l.trim();});
+  if(!lines.length)return {list:[],skipped:0,error:"Rien à lire."};
+  var head=normH(lines[0]),skipped=0,out=[];
+  if(/[;,\t]/.test(lines[0])&&/(montant|amount|prix|price|total)/.test(head)){
+    var rows=parseCSV(text),H=rows[0].map(normH),find=function(re,not){for(var i=0;i<H.length;i++){if(re.test(H[i])&&!(not&&not.test(H[i])))return i;}return -1;};
+    var iD=find(/date|datum/),iT=find(/titre|title|description|libelle|what|objet|nom/,/pay|par/),iA=find(/montant|amount|prix|price|total|valeur|value/,/convert|default|defaut|devise par|euro|rembours|taux|rate/),iE=find(/(convert|default|defaut|en eur|in eur|euro)/),iC=find(/devise|currency|monnaie/,/default|defaut|convert/),iK=find(/categ/),iY=find(/^type|transaction/),iP=find(/pay[eé]? ?par|paid ?by|payer|payeur/);
+    if(iA<0)return {list:[],skipped:0,error:"Colonne de montant introuvable : "+rows[0].join(", ")};
+    rows.slice(1).forEach(function(r,k){
+      var title=(iT>=0?r[iT]:"")||"Dépense",typ=iY>=0?r[iY]:"";
+      if(RC_SKIP.test(title+" "+typ)){skipped++;return;}
+      var amt=parseAmount(r[iA]);if(!isFinite(amt)||!amt){skipped++;return;}
+      var cur=String(iC>=0?r[iC]:"").toUpperCase();cur=/THB|฿|BAHT/.test(cur)?"THB":/EUR|€/.test(cur)?"EUR":/^[A-Z]{3}$/.test(cur.trim())?cur.trim():(/฿|THB/i.test(r[iA])?"THB":"EUR");
+      var eur=iE>=0?parseAmount(r[iE]):NaN;
+      out.push(rcItem({date:iD>=0?r[iD]:"",title:title.trim(),amt:amt,cur:cur,eur:isFinite(eur)?eur:null,payer:iP>=0?r[iP]:"",catHint:iK>=0?r[iK]:""},k));
+    });
+    return {list:out,skipped:skipped};
+  }
+  var reAmt=/(-?\d[\d\s .,]*)\s*(€|eur|euros?|thb|฿|bahts?)(?![a-z])|(€|thb|฿)\s*(-?\d[\d\s .,]*)/i;
+  lines.forEach(function(l,k){
+    if(RC_SKIP.test(l)){skipped++;return;}
+    var m=reAmt.exec(l);if(!m){skipped++;return;}
+    var num=m[1]||m[4],cu=(m[2]||m[3]||"").toLowerCase(),amt=parseAmount(num);if(!isFinite(amt)||!amt){skipped++;return;}
+    var cur=/€|eur/.test(cu)?"EUR":"THB",rest=l.replace(m[0]," ");
+    var dm=/(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/.]\d{1,2}(?:[\/.]\d{2,4})?)/.exec(rest),date=null;
+    if(dm){var ds=dm[1];if(/^\d{1,2}[\/.]\d{1,2}$/.test(ds))ds+="/2026";date=parseDateStr(ds);rest=rest.replace(dm[0]," ");}
+    var title=rest.replace(/[|;\t]+/g," ").replace(/\s{2,}/g," ").replace(/^[\s\-–—:·,]+|[\s\-–—:·,]+$/g,"")||"Dépense";
+    out.push(rcItem({date:date,title:title,amt:amt,cur:cur},k));
+  });
+  return {list:out,skipped:skipped};
+}
+function rcEur(x){return x.eur!=null?x.eur:toEur(x);}
+function rcWords(s){return normH(s).replace(/[^a-z0-9 ]/g," ").split(/\s+/).filter(function(w){return w.length>2;});}
+function rcSim(a,b){var A=rcWords(a),B=rcWords(b);if(!A.length||!B.length)return 0;var n=0;A.forEach(function(w){if(B.some(function(v){return v.indexOf(w)>=0||w.indexOf(v)>=0;}))n++;});return n/Math.max(A.length,B.length);}
+function rcDays(a,b){return Math.abs(Date.parse(a+"T12:00:00Z")-Date.parse(b+"T12:00:00Z"))/86400000;}
+/* compare la liste Tricount T aux dépenses actives de l’app */
+function rcCompare(T){
+  var A=expActive(),usedA={},usedT={},rows=[];
+  T.forEach(function(t){if(!t.tid)return;var a=A.filter(function(x){return x.tid===t.tid&&!usedA[x.id];})[0];if(a){usedA[a.id]=1;usedT[t.key]=1;rows.push({a:a,t:t});}});
+  var pairs=[];
+  T.forEach(function(t){if(usedT[t.key])return;var et=rcEur(t);
+    A.forEach(function(a){if(usedA[a.id]||(a.tid&&a.tid!==t.tid&&T.some(function(o){return o.tid===a.tid;})))return;
+      var ea=toEur(a),d=Math.abs(ea-et)/Math.max(Math.abs(ea),Math.abs(et),0.01);if(d>0.15)return;
+      var sc=(1-d)*3+(a.cat===t.cat?1:0)+rcSim(a.title,t.title)*2+(a.date===t.date?1:rcDays(a.date,t.date)<=3?0.5:0)+(a.cur===t.cur&&Math.abs(a.amt-t.amt)<0.005?1:0);
+      if(sc>=3.4)pairs.push({a:a,t:t,s:sc});});});
+  pairs.sort(function(x,y){return y.s-x.s;});
+  pairs.forEach(function(p){if(usedA[p.a.id]||usedT[p.t.key])return;usedA[p.a.id]=1;usedT[p.t.key]=1;rows.push({a:p.a,t:p.t});});
+  rows.forEach(function(r){var same=r.a.cur===r.t.cur&&Math.abs(r.a.amt-r.t.amt)<0.005&&Math.abs(toEur(r.a)-rcEur(r.t))<0.5;r.kind=same?"same":"diff";r.key="m:"+r.a.id;});
+  T.forEach(function(t){if(!usedT[t.key])rows.push({kind:"missing",t:t,key:"a:"+t.key});});
+  A.forEach(function(a){if(!usedA[a.id])rows.push({kind:"extra",a:a,key:"d:"+a.id});});
+  return rows;
+}
+function rcLoad(list,src){
+  RC.list=list;RC.src=src;RC.rows=rcCompare(list);RC.sel={};RC.done=null;RC.err="";RC.open=true;
+  RC.rows.forEach(function(r){RC.sel[r.key]=true;});
+  UI.tab="tricount";render();setTimeout(function(){var el=document.getElementById("rc-card");if(el&&el.scrollIntoView)try{el.scrollIntoView({block:"start"});}catch(e){}},50);
+}
+function rcLive(){
+  if(!AI.tc){toast(tcWhyText());return;}
+  RC.busy=true;RC.err="";render(true);
+  fetch(aiBase()+"/api/tricount?link="+encodeURIComponent(tcLink())+"&fresh=1",{headers:aiHeaders()}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j&&j.error||("HTTP "+r.status));return j;});})
+  .then(function(j){RC.busy=false;rcLoad(rcFromBridge(j.expenses||[]),"live");},function(e){RC.busy=false;RC.err="Lecture de Tricount impossible : "+((e&&e.message)||e);render(true);});
+}
+/* applique les corrections cochées : sauvegarde d’abord */
+function rcResult(rows,sel){
+  var keep=expActive().slice(),byId={};keep.forEach(function(e){byId[e.id]=e;});
+  var after=keep.filter(function(e){return !rows.some(function(r){return r.kind==="extra"&&sel[r.key]&&r.a.id===e.id;});}).map(function(e){
+    var r=rows.filter(function(r){return (r.kind==="same"||r.kind==="diff")&&sel[r.key]&&r.a.id===e.id;})[0];
+    return r?rcMerge(e,r.t):e;});
+  rows.forEach(function(r){if(r.kind==="missing"&&sel[r.key])after.push(rcNew(r.t));});
+  return after;
+}
+function rcMerge(e,t){
+  var x=JSON.parse(JSON.stringify(e));
+  x.title=t.title;x.amt=t.amt;x.cur=t.cur;x.date=t.date;if(t.eur!=null)x.eur=t.eur;else delete x.eur;
+  if(!x.catUser)x.cat=t.cat;if(t.payer)x.payer=t.payer;if(t.when)x.when=t.when;
+  if(t.tid){x.tid=t.tid;x.src="tricount";}else if(x.src==="roadbook")x.src="import";
+  x.pre=t.date<tcFrom();return x;
+}
+function rcNew(t){var x={id:t.tid?"t"+t.tid:newExpId("i"),date:t.date,title:t.title,amt:t.amt,cur:t.cur,cat:t.cat,payer:t.payer||"",when:t.when||"",src:t.tid?"tricount":"import",pre:t.date<tcFrom()};if(t.eur!=null)x.eur=t.eur;if(t.tid)x.tid=t.tid;return x;}
+function rcApply(){
+  if(!RC.rows)return;
+  var n=RC.rows.filter(function(r){return r.kind!=="same"&&RC.sel[r.key];}).length;
+  var before=expActive().slice(),beforeTot=sumEur(before),after=rcResult(RC.rows,RC.sel),tcTot=sumEur(RC.list);
+  if(!confirm("Appliquer "+n+" correction(s) ?\nTotal de l’app : "+eurTxt(beforeTot)+" → "+eurTxt(sumEur(after))+" (Tricount : "+eurTxt(tcTot)+").\nUne sauvegarde est faite avant."))return;
+  if(!backup("Avant synchronisation avec Tricount"))return;
+  var inactive=S.exp.filter(function(e){return before.indexOf(e)<0;});
+  S.exp=inactive.concat(after);
+  if(RC.src==="live")S.budget.tcTruth=true;
+  save();
+  var now=expActive();
+  RC.done={before:catTotals(before),beforeTot:beforeTot,after:catTotals(now),afterTot:sumEur(now),tc:catTotals(RC.list),tcTot:tcTot,n:n};
+  RC.rows=null;RC.list=RC.list;toast("Corrections appliquées");render(true);
+}
+function rcTable(cols){
+  var keys=[];cols.forEach(function(c){Object.keys(c[1]).forEach(function(k){if(keys.indexOf(k)<0&&Math.abs(c[1][k])>=0.005)keys.push(k);});});
+  keys.sort(function(a,b){return CATS.map(function(c){return c[0];}).indexOf(a)-CATS.map(function(c){return c[0];}).indexOf(b);});
+  var h='<table class="small" style="width:100%;border-collapse:collapse;margin-top:8px"><tr><th style="text-align:left">Catégorie</th>'+cols.map(function(c){return '<th style="text-align:right">'+esc(c[0])+'</th>';}).join("")+'</tr>';
+  keys.forEach(function(k){h+='<tr style="border-top:1px solid var(--line)"><td>'+esc(catName(k))+'</td>'+cols.map(function(c,i){var v=c[1][k]||0,ref=cols[cols.length-1][1][k]||0;var bad=i<cols.length-1&&cols[i][0]!=="Avant"&&Math.abs(v-ref)>1;return '<td style="text-align:right'+(bad?';color:var(--alert)':'')+'">'+eurTxt(v)+'</td>';}).join("")+'</tr>';});
+  h+='<tr style="border-top:2px solid var(--line);font-weight:700"><td>Total</td>'+cols.map(function(c){return '<td style="text-align:right">'+eurTxt(c[2])+'</td>';}).join("")+'</tr></table>';
+  return h;
+}
+function rcRowHtml(r){
+  var on=RC.sel[r.key],cb='<input type="checkbox" data-a="rcsel" data-k="'+esc(r.key)+'"'+(on?' checked':'')+' style="flex:none;width:22px;height:22px">';
+  var side=function(e,lbl){return '<span class="small"><span class="muted">'+lbl+' :</span> '+esc(e.date)+' · '+esc(e.title)+' · <b>'+amtTxt(e)+'</b>'+(e.cur!=="EUR"?' ('+eurTxt(lbl==="Tricount"?rcEur(e):toEur(e))+')':'')+'</span>';};
+  var body=r.kind==="missing"?side(r.t,"Tricount")+'<br><span class="small muted">À ajouter dans l’app · '+esc(catName(r.t.cat))+'</span>'
+    :r.kind==="extra"?side(r.a,"App")+'<br><span class="small muted">Absente de Tricount : à supprimer de l’app'+(r.a.src==="roadbook"?' (réservation du roadbook)':'')+'</span>'
+    :side(r.a,"App")+'<br>'+side(r.t,"Tricount")+(r.kind==="diff"?'<br><span class="small" style="color:var(--alert)">Écart : '+eurTxt(rcEur(r.t)-toEur(r.a))+' · l’app prendra la valeur de Tricount</span>':'');
+  return '<label class="ck" style="align-items:flex-start;gap:10px;padding:8px 0;border-top:1px solid var(--line)">'+cb+'<span style="flex:1">'+body+'</span></label>';
+}
+function rcHtml(){
+  var h='<div class="card" id="rc-card"><h3>Synchroniser avec Tricount</h3>';
+  if(RC.done){
+    var d=RC.done,gap=d.afterTot-d.tcTot,ok=Math.abs(gap)<=5;
+    h+='<p class="small" style="font-weight:700;color:'+(ok?'var(--ok)':'var(--alert)')+'">'+(ok?'✓ Total de l’app = total Tricount':'⚠ Écart avec Tricount')+' : '+eurTxt(d.afterTot)+' contre '+eurTxt(d.tcTot)+' (écart '+eurTxt(gap)+')</p>';
+    h+='<p class="small muted">'+d.n+' correction(s) appliquée(s). Récapitulatif par catégorie :</p>'+rcTable([["Avant",d.before,d.beforeTot],["Après",d.after,d.afterTot],["Tricount",d.tc,d.tcTot]]);
+    h+='<div class="row" style="margin-top:10px"><button class="cp" data-a="rcclose">Fermer</button><button class="cp" data-a="rclive">Comparer à nouveau</button></div></div>';
+    return h;
+  }
+  if(!RC.rows){
+    h+='<p class="small">L’app compare ses dépenses à celles de Tricount, vous montre les différences, puis corrige ce que vous validez. Remboursements entre vous ignorés, montant total et devise de Tricount conservés.</p>';
+    if(tcPossible())h+='<div class="row" style="margin-top:8px"><button class="btn" data-a="rclive"'+(RC.busy?' disabled':'')+'>'+(RC.busy?'Lecture de Tricount…':'Lire Tricount et comparer')+'</button></div>';
+    h+='<details style="margin-top:10px"><summary class="small">Coller une liste, importer un CSV ou une capture</summary><div style="margin-top:8px"><textarea id="rc-paste" class="txt" rows="5" placeholder="Une dépense par ligne (12/11 Taxi 120 THB) ou le contenu d’un export CSV de Tricount">'+esc(RC.paste)+'</textarea>'
+      +'<div class="row" style="margin-top:8px"><button class="btn alt" data-a="rcpaste">Comparer cette liste</button><button class="cp" data-a="rccsv">Importer un CSV</button><input type="file" id="rc-file" accept=".csv,text/csv,text/plain" data-a="rcfile" hidden><button class="cp" data-a="rcshot">Capture → Assistant</button></div></div></details>';
+    if(RC.err)h+='<p class="small" style="color:var(--alert);margin-top:8px">'+esc(RC.err)+'</p>';
+    return h+'</div>';
+  }
+  var rows=RC.rows,g=function(k){return rows.filter(function(r){return r.kind===k;});},before=expActive(),after=rcResult(rows,RC.sel);
+  h+='<p class="small muted">Source : '+({live:"Tricount, lu à l’instant",paste:"liste collée",csv:"fichier CSV",capture:"capture lue par l’assistant"}[RC.src]||RC.src)+' · '+RC.list.length+' dépenses</p>';
+  h+=rcTable([["Avant",catTotals(before),sumEur(before)],["Après",catTotals(after),sumEur(after)],["Tricount",catTotals(RC.list),sumEur(RC.list)]]);
+  var sec=function(k,title,open){var L=g(k);if(!L.length)return "";return '<details style="margin-top:10px"'+(open?' open':'')+'><summary><b>'+title+' ('+L.length+')</b></summary><div class="row" style="margin:6px 0"><button class="cp" data-a="rcall" data-v="'+k+'" data-id="1">Tout cocher</button><button class="cp" data-a="rcall" data-v="'+k+'" data-id="0">Tout décocher</button></div>'+L.map(rcRowHtml).join("")+'</details>';};
+  if(RC.src!=="live"&&g("extra").length>Math.max(3,RC.list.length/2))h+='<p class="small" style="color:var(--alert);margin-top:8px">La liste lue semble incomplète : tout ce qui n’y figure pas est proposé à la suppression. Décochez « En trop dans l’app » si la liste ne contient pas toutes les dépenses.</p>';
+  h+=sec("diff","Montants différents",true)+sec("missing","Manquantes dans l’app",true)+sec("extra","En trop dans l’app",true)+sec("same","Identiques (liées à Tricount)",false);
+  if(!g("diff").length&&!g("missing").length&&!g("extra").length)h+='<p class="small" style="color:var(--ok);margin-top:8px">✓ Aucune différence avec Tricount.</p>';
+  h+='<div class="row" style="margin-top:12px"><button class="btn" data-a="rcapply">Appliquer les corrections cochées</button><button class="btn alt" data-a="rcclose">Annuler</button></div>';
+  h+='<p class="small muted" style="margin-top:6px">Rien n’est modifié avant votre validation. Une sauvegarde est faite juste avant.</p>';
+  return h+'</div>';
+}
+
+/* --- budget prévisionnel d’après Tricount (12 novembre) --- */
+var TC_FORECAST={id:"tricount-2026-11-12",label:"valeurs Tricount du 12 novembre",total:4000,max:4400,
+  spent:{vols:1696,hebergement:1248,excursions:421,nourriture:156,transport:160,shopping:25},
+  resteTHB:8500,resteLabel:"transferts, taxe du lac, parcs Phi Phi et Hong Islands, bateau de Railay",foodDay:25,foodDays:7};
+function forecastCats(){var f=TC_FORECAST,r=S.set.rate||37.71,c=JSON.parse(JSON.stringify(f.spent));c.nourriture=Math.round((c.nourriture+f.foodDay*f.foodDays)*100)/100;c.transport=Math.round((c.transport+f.resteTHB/r)*100)/100;return c;}
+function forecastHtml(){
+  var B=S.budget||{},f=TC_FORECAST,r=S.set.rate||37.71,nc=forecastCats(),applied=B.forecastV===f.id;
+  var spent=0;Object.keys(f.spent).forEach(function(k){spent+=f.spent[k];});
+  var reste=f.resteTHB/r,food=f.foodDay*f.foodDays,end=spent+reste+food;
+  var h='<details class="card"'+(applied?'':' open')+'><summary>Budget prévisionnel ('+esc(f.label)+')'+(applied?' · appliqué':'')+'</summary><div>';
+  h+='<p class="small">Dépensé selon Tricount : <b>'+eurTxt(spent)+'</b>. Reste à payer : '+thbTxt(f.resteTHB)+' ≈ '+eurTxt(reste)+' ('+esc(f.resteLabel)+'), plus '+f.foodDays+' jours de nourriture à '+eurTxt(f.foodDay)+' = '+eurTxt(food)+'.</p>';
+  h+='<p class="small" style="margin-top:6px"><b>Prévision fin de voyage : '+eurTxt(end)+'</b> · objectif '+eurTxt(f.total)+' ('+(end<=f.total?'tenu':'<span style="color:var(--alert)">dépassé de '+eurTxt(end-f.total)+'</span>')+') · maximum '+eurTxt(f.max)+' ('+(end<=f.max?'reste '+eurTxt(f.max-end):'<span style="color:var(--alert)">dépassé</span>')+').</p>';
+  var cur=B.cats||{},keys=CATS.map(function(c){return c[0];}).filter(function(k){return cur[k]||nc[k];});
+  h+='<table class="small" style="width:100%;border-collapse:collapse;margin-top:8px"><tr><th style="text-align:left">Catégorie</th><th style="text-align:right">Avant</th><th style="text-align:right">Après</th></tr>'
+    +keys.map(function(k){return '<tr style="border-top:1px solid var(--line)"><td>'+esc(catName(k))+'</td><td style="text-align:right">'+(cur[k]?eurTxt(parseFloat(cur[k])):"—")+'</td><td style="text-align:right">'+(nc[k]?eurTxt(nc[k]):"—")+'</td></tr>';}).join("")+'</table>';
+  h+='<p class="small muted" style="margin-top:6px">Nourriture et transport incluent le reste à payer. Objectif '+eurTxt(f.total)+', maximum '+eurTxt(f.max)+'.</p>';
+  h+='<div class="row" style="margin-top:8px"><button class="'+(applied?'cp':'btn')+'" data-a="fcapply">'+(applied?'Réappliquer ce budget':'Appliquer ce budget')+'</button></div>';
+  h+='<div class="row" style="margin-top:10px"><label class="small" style="flex:1">Reste à payer (THB)<input type="number" inputmode="decimal" data-a="bud" data-k="resteTHB" value="'+esc(B.resteTHB!=null?B.resteTHB:"")+'" placeholder="'+f.resteTHB+'"></label><label class="small" style="flex:1">Nourriture par jour restant (€)<input type="number" inputmode="decimal" data-a="bud" data-k="foodDay" value="'+esc(B.foodDay!=null?B.foodDay:"")+'" placeholder="'+f.foodDay+'"></label></div>';
+  h+='<p class="small muted" style="margin-top:4px">Baissez le reste à payer au fur et à mesure des paiements, pour que la prévision reste juste.</p>';
+  return h+'</div></details>';
+}
+function forecastApply(){
+  var f=TC_FORECAST,nc=forecastCats();
+  if(!confirm("Remplacer le budget prévisionnel par les "+f.label+" ?\nUne sauvegarde est faite avant."))return;
+  if(!backup("Avant mise à jour du budget prévisionnel"))return;
+  S.budget=S.budget||{};S.budget.cats=nc;S.budget.total=f.total;S.budget.max=f.max;S.budget.resteTHB=f.resteTHB;S.budget.foodDay=f.foodDay;S.budget.forecastV=f.id;
+  save();toast("Budget prévisionnel mis à jour");render(true);
+}
+/* prévision : dépensé + reste à payer + nourriture des jours restants */
+function forecastStats(b){
+  var B=S.budget||{};if(B.resteTHB==null||B.resteTHB==="")return null;
+  var today=dateKey(nowMs(),TRIP_TZ),days=DAYS.filter(function(d){return d.date>today;}).length,food=(parseFloat(B.foodDay)||0)*days,reste=(parseFloat(B.resteTHB)||0)/(S.set.rate||37.71);
+  return {reste:reste,food:food,days:days,end:b.tot+reste+food};
+}
+/* contrôle permanent : total de l’app comparé au dernier total lu dans Tricount */
+function tcCheckHtml(){
+  if(!S.tcSync||S.tcSync.totalAll==null)return "";
+  var app=sumEur(expActive()),gap=app-S.tcSync.totalAll,ok=Math.abs(gap)<=5;
+  return '<p class="small" style="margin-top:6px;color:'+(ok?'var(--ok)':'var(--alert)')+'">'+(ok?'✓ ':'⚠ ')+'Total app '+eurTxt(app)+' · Tricount '+eurTxt(S.tcSync.totalAll)+(ok?'':' · écart '+eurTxt(gap)+' : touchez « Lire Tricount et comparer » plus bas')+'</p>';
+}
+
+/* --- blocs DEPENSES_MODIF, DEPENSES_SUPPR et TRICOUNT_LISTE de l’assistant --- */
+var AI_FIELDS={montant:"montant",amount:"montant",devise:"devise",currency:"devise",titre:"titre",title:"titre",date:"date",categorie:"categorie","catégorie":"categorie",category:"categorie",payeur:"payeur",payer:"payeur"};
+function expById(id){return S.exp.filter(function(e){return e.id===id;})[0]||null;}
+function aiModPreview(o){
+  var e=expById(o.id),f=AI_FIELDS[o.champ];if(!e)return {ok:false,txt:"Identifiant inconnu : "+o.id};if(!f)return {ok:false,txt:"Champ inconnu : "+o.champ};
+  var v=o.valeur,old,nw;
+  if(f==="montant"){v=parseFloat(v);if(!isFinite(v)||!v)return {ok:false,txt:e.title+" : montant invalide"};old=amtTxt(e);nw=amtTxt({amt:v,cur:e.cur});}
+  else if(f==="devise"){v=String(v||"").toUpperCase().replace("€","EUR").replace("฿","THB");if(!/^[A-Z]{3}$/.test(v))return {ok:false,txt:e.title+" : devise invalide"};old=e.cur;nw=v;}
+  else if(f==="date"){v=parseDateStr(v);if(!v)return {ok:false,txt:e.title+" : date invalide"};old=e.date;nw=v;}
+  else if(f==="categorie"){v=String(v||"").toLowerCase();if(!CATN[v])return {ok:false,txt:e.title+" : catégorie inconnue"};old=catName(e.cat);nw=catName(v);}
+  else{v=String(v||"").slice(0,100);old=f==="titre"?e.title:(e.payer||"—");nw=v;}
+  return {ok:true,e:e,f:f,v:v,txt:e.title+" · "+({montant:"montant",devise:"devise",titre:"titre",date:"date",categorie:"catégorie",payeur:"payé par"}[f])+" : "+old+" → "+nw};
+}
+function aiModApply(list){
+  var P=(list||[]).map(aiModPreview).filter(function(p){return p.ok;});if(!P.length){toast("Aucune modification valide");return null;}
+  if(!backup("Avant modifications proposées par l’assistant"))return null;
+  P.forEach(function(p){var e=p.e;
+    if(p.f==="montant"){e.amt=Math.round(p.v*100)/100;if(e.cur==="EUR")e.eur=e.amt;else delete e.eur;}
+    else if(p.f==="devise"){e.cur=p.v;if(p.v==="EUR")e.eur=e.amt;else delete e.eur;}
+    else if(p.f==="date")e.date=p.v;else if(p.f==="categorie"){e.cat=p.v;e.catUser=true;}else if(p.f==="titre")e.title=p.v;else e.payer=p.v;
+    e.edited=Date.now();});
+  save();toast(P.length+" modification(s) appliquée(s)");return P.length+" modification(s) appliquée(s)";
+}
+function aiDelApply(ids){
+  var L=(ids||[]).map(expById).filter(Boolean);if(!L.length){toast("Aucune dépense à supprimer");return null;}
+  if(!confirm("Supprimer "+L.length+" dépense(s) ("+eurTxt(sumEur(L))+") ?"))return null;
+  if(!backup("Avant suppressions proposées par l’assistant"))return null;
+  S.exp=S.exp.filter(function(e){return L.indexOf(e)<0;});save();toast(L.length+" dépense(s) supprimée(s)");return L.length+" dépense(s) supprimée(s)";
+}
+function aiExpCards(m,i){
+  var h="";
+  if(m.mod&&m.mod.length){
+    var P=m.mod.map(aiModPreview);
+    h+='<div class="prop"><b>Corrections de dépenses proposées ('+P.length+')</b><ul class="small">'+P.map(function(p){return '<li'+(p.ok?'':' style="color:var(--alert)"')+'>'+esc(p.txt)+'</li>';}).join("")+'</ul>';
+    h+=m.modApplied?'<p class="small" style="color:'+(m.modApplied==="Ignorée"?'var(--muted)':'var(--ok)')+';font-weight:700">'+esc(m.modApplied)+'</p>':'<div class="row"><button class="btn" data-a="modapply" data-i="'+i+'">Appliquer</button><button class="btn alt" data-a="modignore" data-i="'+i+'">Ignorer</button></div>';
+    h+='</div>';
+  }
+  if(m.del&&m.del.length){
+    h+='<div class="prop"><b>Suppressions proposées ('+m.del.length+')</b><ul class="small">'+m.del.map(function(id){var e=expById(id);return e?'<li>'+esc(e.date)+' · '+esc(e.title)+' · '+amtTxt(e)+(e.cur!=="EUR"?' ('+eurTxt(toEur(e))+')':'')+'</li>':'<li style="color:var(--alert)">Identifiant inconnu : '+esc(id)+'</li>';}).join("")+'</ul>';
+    h+=m.delApplied?'<p class="small" style="color:'+(m.delApplied==="Ignorée"?'var(--muted)':'var(--ok)')+';font-weight:700">'+esc(m.delApplied)+'</p>':'<div class="row"><button class="btn" data-a="delapply" data-i="'+i+'">Appliquer</button><button class="btn alt" data-a="delignore" data-i="'+i+'">Ignorer</button></div>';
+    h+='</div>';
+  }
+  if(m.tcl&&m.tcl.length){
+    var tt=0;m.tcl.forEach(function(o){tt+=o.eur!=null?parseFloat(o.eur):toEur({amt:o.amt,cur:o.cur});});
+    h+='<div class="prop"><b>Liste Tricount lue : '+m.tcl.length+' dépense(s)</b> · '+eurTxt(tt)+'<div class="row" style="margin-top:6px"><button class="btn" data-a="tclcompare" data-i="'+i+'">Comparer avec l’app</button></div></div>';
+  }
+  return h;
+}
 
 /* ---------- boucle ---------- */
 try{var stab=sessionStorage.getItem("thai26-tab");if(stab){UI.tab=stab;sessionStorage.removeItem("thai26-tab");}}catch(e){}
