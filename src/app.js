@@ -744,7 +744,10 @@ function vAi(){
    +(AI.busy?'<button class="btn warn" data-a="aistop" style="margin-left:auto">Stop</button>':'<button class="btn" data-a="aisend" style="margin-left:auto">Envoyer</button>')+'</div></div>';
   return h;
 }
-function aiLive(text){text=aiStripLive(text);AI.live=text;var el=$("#ai-live");if(el)el.innerHTML=aiMd(text);}
+/* conversation : toujours afficher le bas (dernier message et zone de saisie) */
+function aiBottom(){var go=function(){if(UI.tab==="ai"&&!UI.sheet)window.scrollTo(0,document.body.scrollHeight);};go();setTimeout(go,80);setTimeout(go,400);}
+function aiNearBottom(){return window.innerHeight+window.scrollY>=document.body.scrollHeight-300;}
+function aiLive(text){text=aiStripLive(text);AI.live=text;var near=aiNearBottom(),el=$("#ai-live");if(el)el.innerHTML=aiMd(text);if(near)window.scrollTo(0,document.body.scrollHeight);}
 function getPosOnce(cb){
   if(S.set.aiPos===false||!navigator.geolocation)return cb();
   if(POS&&POS.t&&Date.now()-POS.t<120000)return cb();
@@ -764,7 +767,7 @@ function aiSend(text,speak){
   text=(text||"").trim();if(!text&&!AI.img)return;if(AI.busy)return;
   if(!text)text="Qu’est-ce que c’est ? Raconte-nous ce que nous voyons.";
   var img=AI.img;AI.msgs.push({role:"user",content:text,img:!!img});AI.draft="";AI.img=null;if(AI.imgUrl){try{URL.revokeObjectURL(AI.imgUrl);}catch(e){}}AI.imgUrl=null;
-  AI.busy=true;AI.live="";saveAi();render(true);window.scrollTo(0,document.body.scrollHeight);
+  AI.busy=true;AI.live="";saveAi();render(true);aiBottom();
   getPosOnce(function(){
     var rules=AI_RULES.concat([aiRestRule()]).join("\n")+"\n\n=== CONTEXTE DU VOYAGE ===\n"+tripContext()+"\n=== FIN DU CONTEXTE ===";
     var hist=AI.msgs.slice(-12).map(function(m){var c=m.content;if(m.prop)c+="\n[Bloc PROGRAMME proposé pour le(s) jour(s) "+m.prop.map(function(v){return v.n;}).join(", ")+" : "+(m.applied==="ok"?"appliqué":m.applied==="no"?"ignoré":"en attente")+"]";if(m.exp)c+="\n[Bloc DEPENSES proposé : "+(m.expApplied?"ajouté":"en attente")+"]";if(m.mod)c+="\n[Bloc DEPENSES_MODIF proposé ("+m.mod.length+") : "+(m.modApplied||"en attente")+"]";if(m.del)c+="\n[Bloc DEPENSES_SUPPR proposé ("+m.del.length+") : "+(m.delApplied||"en attente")+"]";if(m.tcl)c+="\n[Liste Tricount extraite : "+m.tcl.length+" dépenses]";if(m.bud)c+="\n[Bloc BUDGET_MODIF proposé ("+m.bud.length+") : "+(m.budApplied||"en attente")+"]";return {role:m.role,content:c};});
@@ -772,7 +775,7 @@ function aiSend(text,speak){
       AI.busy=false;AI.ctl=null;
       if(out){var ex=aiExtract(out);out=ex.clean;AI.msgs.push({role:"assistant",content:ex.clean||"(proposition ci-dessous)",prop:ex.prop,exp:ex.exp,mod:ex.mod,del:ex.del,tcl:ex.tcl,bud:ex.bud,err:ex.err});saveAi();}
       if(err)toast(err);
-      render(true);window.scrollTo(0,document.body.scrollHeight);
+      render(true);aiBottom();
       if(out&&speak){startQueue({title:"Assistant",sub:"Audio guide personnalisé"},[{t:"",x:aiPlain(out)}],0);}
     };
     if(AI.mode==="claude"){
@@ -1327,7 +1330,7 @@ document.addEventListener("click",function(e){
   switch(a){
     case "airetry":toast("Connexion au Minix…");aiRetry(true,true);break;
     case "tab":if(v==="ai"&&AI.mode==="none")aiRetry();if(v==="tricount"&&AI.tc&&tcLink()&&(!S.tcSync||Date.now()-S.tcSync.at>60000))setTimeout(function(){tcSync(true);},50);
-      else if(v==="tricount"&&!AI.tc&&tcPossible()&&AI.mode!=="pending")aiServer(function(){if(AI.tc&&tcLink())tcSync(true);else if(UI.tab==="tricount")render(true);});UI.tab=v;if(UI.sheet){UI.sheet=null;renderSheet();}render();window.scrollTo(0,0);break;
+      else if(v==="tricount"&&!AI.tc&&tcPossible()&&AI.mode!=="pending")aiServer(function(){if(AI.tc&&tcLink())tcSync(true);else if(UI.tab==="tricount")render(true);});UI.tab=v;if(UI.sheet){UI.sheet=null;renderSheet();}render();if(v==="ai")aiBottom();else window.scrollTo(0,0);break;
     case "day":var n=parseInt(b.getAttribute("data-n"),10);UI.openDay=(UI.openDay===n)?null:n;render(true);break;
     case "done":S.done[id]=!S.done[id];save();render(true);break;
     case "ack":S.ack[id]=true;save();render(true);break;
@@ -1410,7 +1413,7 @@ document.addEventListener("click",function(e){
 });
 document.addEventListener("change",function(e){
   var el=e.target,a=el.getAttribute&&el.getAttribute("data-a");if(!a)return;
-  if(a==="aifile"){var fl=el.files&&el.files[0];if(fl){AI.img=fl;if(AI.imgUrl){try{URL.revokeObjectURL(AI.imgUrl);}catch(e){}}AI.imgUrl=URL.createObjectURL(fl);var ta2=$("#ai-text");if(ta2)AI.draft=ta2.value;render(true);}return;}
+  if(a==="aifile"){var fl=el.files&&el.files[0];if(fl){AI.img=fl;if(AI.imgUrl){try{URL.revokeObjectURL(AI.imgUrl);}catch(e){}}AI.imgUrl=URL.createObjectURL(fl);var ta2=$("#ai-text");if(ta2)AI.draft=ta2.value;render(true);aiBottom();}return;}
   if(a==="aipos"){S.set.aiPos=el.checked;save();return;}
   if(a==="restepaid"){resteToggle(el.getAttribute("data-id"),el.checked);return;}
   if(a==="rcsel"){RC.sel[el.getAttribute("data-k")]=el.checked;var y=window.scrollY;render(true);window.scrollTo(0,y);return;}
@@ -1871,6 +1874,7 @@ setTheme();
 checkReminders();
 render();
 aiInit();
+if(UI.tab==="ai")setTimeout(aiBottom,150);
 /* reconnexion automatique au Minix (Tailscale activé après coup, retour dans l’app, retour du réseau) */
 var AIR={busy:false,last:0};
 function aiRetry(force,notify){
@@ -1880,7 +1884,7 @@ function aiRetry(force,notify){
   AIR.busy=true;AIR.last=Date.now();var was=AI.mode+"|"+!!AI.tc;
   aiServer(function(){
     AIR.busy=false;var now=AI.mode+"|"+!!AI.tc,ae=document.activeElement,typing=ae&&/INPUT|TEXTAREA|SELECT/.test(ae.tagName);
-    if(now!==was){if((UI.tab==="ai"||UI.tab==="tricount")&&!UI.sheet&&!typing)render(true);if(AI.mode==="server"&&was.indexOf("none")===0)toast("Minix reconnecté");}
+    if(now!==was){if((UI.tab==="ai"||UI.tab==="tricount")&&!UI.sheet&&!typing){render(true);if(UI.tab==="ai")aiBottom();}if(AI.mode==="server"&&was.indexOf("none")===0)toast("Minix reconnecté");}
     if(notify&&AI.mode!=="server")toast(AI.reach!=="ok"?"Minix toujours injoignable : Tailscale est-il activé ?":"Le Minix répond, mais l’assistant n’est pas disponible");
     if(AI.tc&&tcLink()&&(!S.tcSync||Date.now()-S.tcSync.at>60000))tcSync(true);
   },true);
