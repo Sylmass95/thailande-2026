@@ -595,12 +595,12 @@ var MINIX_DEFAULT="https://minix.tailc987de.ts.net";
 function minixDefault(){return NATIVE?MINIX_DEFAULT:"";}
 function aiBase(){return (S.set.aiBase||minixDefault()).replace(/\/+$/,"");}
 function aiRerender(){if(UI.tab==="ai"&&!UI.sheet)render(true);}
-function aiServer(cb){
+function aiServer(cb,quiet){
   var base=aiBase(),done=function(){if(typeof cb==="function")try{cb();}catch(e){}};
   if(!base&&!(/^https?:$/.test(location.protocol)&&!NATIVE)){AI.mode="none";aiRerender();done();return;}
   try{
     AI.reach="pending";AI.err="";
-    fetch(base+"/api/health",{headers:aiHeaders()}).then(function(r){if(!r.ok)throw new Error("réponse HTTP "+r.status);return r.json().catch(function(){throw new Error("réponse inattendue : ce n’est pas le serveur du carnet");});}).then(function(j){AI.reach=j&&j.ok?"ok":"ko";AI.needsToken=!!(j&&j.needsToken);AI.auth=(j&&j.auth!==undefined)?!!j.auth:!(j&&j.needsToken&&!j.ai&&!j.tricount);AI.tcWhy=(j&&j.tricount)?"":!AI.auth?"token":(j&&j.tricountConfigured===false)?"config":(j&&j.tricountUp===false)?"down":"unknown";AI.mode=(j&&j.ai)?"server":"none";AI.web=!!(j&&j.web);AI.tc=!!(j&&j.tricount);if(AI.tc&&tcLink()&&(!S.tcSync||Date.now()-S.tcSync.at>900000))tcSync(true);}).catch(function(e){AI.mode="none";AI.reach="ko";AI.err=(e instanceof TypeError)?"aucune réponse":((e&&e.message)||"");}).then(function(){aiRerender();var st=document.getElementById("minix-state");if(st)st.textContent="État : "+minixState();done();});
+    fetch(base+"/api/health",{headers:aiHeaders()}).then(function(r){if(!r.ok)throw new Error("réponse HTTP "+r.status);return r.json().catch(function(){throw new Error("réponse inattendue : ce n’est pas le serveur du carnet");});}).then(function(j){AI.reach=j&&j.ok?"ok":"ko";AI.needsToken=!!(j&&j.needsToken);AI.auth=(j&&j.auth!==undefined)?!!j.auth:!(j&&j.needsToken&&!j.ai&&!j.tricount);AI.tcWhy=(j&&j.tricount)?"":!AI.auth?"token":(j&&j.tricountConfigured===false)?"config":(j&&j.tricountUp===false)?"down":"unknown";AI.mode=(j&&j.ai)?"server":"none";AI.web=!!(j&&j.web);AI.tc=!!(j&&j.tricount);if(AI.tc&&tcLink()&&(!S.tcSync||Date.now()-S.tcSync.at>900000))tcSync(true);}).catch(function(e){AI.mode="none";AI.reach="ko";AI.err=(e instanceof TypeError)?"aucune réponse":((e&&e.message)||"");}).then(function(){if(!quiet)aiRerender();var st=document.getElementById("minix-state");if(st)st.textContent="État : "+minixState();done();});
   }catch(e){AI.mode="none";aiRerender();done();}
 }
 /* État lisible de la connexion au Minix (mises à jour) et de l’assistant IA */
@@ -716,6 +716,11 @@ var AI_CHIPS=[
 function vAi(){
   var mode=AI.mode,h='<header class="top"><div><h1>Assistant</h1><p>Guide personnel, photos, restaurants, traductions</p></div>'+(mode==="claude"?'<span class="badge">Claude</span>':mode==="server"?'<span class="badge">Serveur IA</span>':'')+'</header>';
   if(mode==="pending")return h+'<div class="card"><p>Connexion à l’assistant…</p></div>';
+  if(mode==="none"&&aiBase()&&AI.reach){
+    var why=AI.reach!=="ok"?'Le Minix ne répond pas : activez <b>Tailscale</b> (VPN) sur le téléphone. L’app se reconnecte toute seule dès que le Minix répond, sans rien toucher.'
+      :AI.auth===false?'Le Minix répond, mais le code d’accès est manquant ou incorrect : saisissez-le dans Pratique → Réglages → Serveur Minix.':'Le Minix répond, mais aucune clé API n’est configurée sur le serveur.';
+    return h+'<div class="card"><h3>Assistant en attente du Minix</h3><p class="small">'+why+'</p><div class="row" style="margin-top:8px"><button class="btn alt" data-a="airetry">Réessayer maintenant</button>'+(AI.reach==="ok"?'<button class="cp" data-a="tab" data-v="tools">Réglages</button>':'')+'<a class="cp" href="'+mapsRestaurants()+'" target="_blank" rel="noopener">Restaurants autour (Google Maps)</a></div></div>';
+  }
   if(mode==="none"){
     h+='<div class="card"><h3>Assistant indisponible ici</h3><p class="small">L’assistant fonctionne :</p><ul class="small"><li>dans l’app Claude, en ouvrant le lien de l’artefact ;</li><li>dans la version Minix, si le serveur a une clé API ;</li><li>dans l’APK, en indiquant l’adresse de votre serveur Minix dans Pratique, puis Réglages.</li></ul><div class="row" style="margin-top:8px"><button class="cp" data-a="tab" data-v="tools">Réglages</button><a class="cp" href="'+mapsRestaurants()+'" target="_blank" rel="noopener">Restaurants autour (Google Maps)</a></div></div>';
     return h;
@@ -1320,7 +1325,8 @@ document.addEventListener("click",function(e){
   var b=e.target.closest("[data-a]");if(!b)return;
   var a=b.getAttribute("data-a"),id=b.getAttribute("data-id"),v=b.getAttribute("data-v");
   switch(a){
-    case "tab":if(v==="tricount"&&AI.tc&&tcLink()&&(!S.tcSync||Date.now()-S.tcSync.at>60000))setTimeout(function(){tcSync(true);},50);
+    case "airetry":toast("Connexion au Minix…");aiRetry(true,true);break;
+    case "tab":if(v==="ai"&&AI.mode==="none")aiRetry();if(v==="tricount"&&AI.tc&&tcLink()&&(!S.tcSync||Date.now()-S.tcSync.at>60000))setTimeout(function(){tcSync(true);},50);
       else if(v==="tricount"&&!AI.tc&&tcPossible()&&AI.mode!=="pending")aiServer(function(){if(AI.tc&&tcLink())tcSync(true);else if(UI.tab==="tricount")render(true);});UI.tab=v;if(UI.sheet){UI.sheet=null;renderSheet();}render();window.scrollTo(0,0);break;
     case "day":var n=parseInt(b.getAttribute("data-n"),10);UI.openDay=(UI.openDay===n)?null:n;render(true);break;
     case "done":S.done[id]=!S.done[id];save();render(true);break;
@@ -1865,6 +1871,22 @@ setTheme();
 checkReminders();
 render();
 aiInit();
+/* reconnexion automatique au Minix (Tailscale activé après coup, retour dans l’app, retour du réseau) */
+var AIR={busy:false,last:0};
+function aiRetry(force,notify){
+  if(AI.mode==="claude"||AI.mode==="pending"||AIR.busy||AI.busy)return;
+  if(!force&&AI.mode==="server"&&AI.tc)return;
+  if(!aiBase()&&!tcPossible())return;
+  AIR.busy=true;AIR.last=Date.now();var was=AI.mode+"|"+!!AI.tc;
+  aiServer(function(){
+    AIR.busy=false;var now=AI.mode+"|"+!!AI.tc,ae=document.activeElement,typing=ae&&/INPUT|TEXTAREA|SELECT/.test(ae.tagName);
+    if(now!==was){if((UI.tab==="ai"||UI.tab==="tricount")&&!UI.sheet&&!typing)render(true);if(AI.mode==="server"&&was.indexOf("none")===0)toast("Minix reconnecté");}
+    if(notify&&AI.mode!=="server")toast(AI.reach!=="ok"?"Minix toujours injoignable : Tailscale est-il activé ?":"Le Minix répond, mais l’assistant n’est pas disponible");
+    if(AI.tc&&tcLink()&&(!S.tcSync||Date.now()-S.tcSync.at>60000))tcSync(true);
+  },true);
+}
+setInterval(function(){if(document.hidden)return;if(AI.mode==="none")aiRetry();else if(AI.mode==="server"&&!AI.tc&&Date.now()-AIR.last>60000)aiRetry();},10000);
+window.addEventListener("online",function(){aiRetry(true);});
 if(S.set.geo)startGeo();
 if(NATIVE){scheduleAll();if(APPN&&APPN.addListener){APPN.addListener("backButton",function(){if($("#driver").className==="on"){$("#driver").className="";}else if(UI.sheet){closeSheet();}else if(UI.tab!=="today"){UI.tab="today";render();window.scrollTo(0,0);}else if(APPN.minimizeApp){APPN.minimizeApp();}});}}
 setInterval(function(){
@@ -1874,7 +1896,7 @@ setInterval(function(){
     if(!(active&&/INPUT|SELECT|TEXTAREA/.test(active.tagName)))render(true);
   }else if(ch&&UI.tab==="remind"){render(true);}
 },20000);
-document.addEventListener("visibilitychange",function(){if(!document.hidden){checkReminders();if(UI.tab==="today")render(true);if(UI.tab==="tricount"&&AI.tc&&(!S.tcSync||Date.now()-S.tcSync.at>60000))tcSync(true);updCheck();}});
+document.addEventListener("visibilitychange",function(){if(!document.hidden){aiRetry(true);checkReminders();if(UI.tab==="today")render(true);if(UI.tab==="tricount"&&AI.tc&&(!S.tcSync||Date.now()-S.tcSync.at>60000))tcSync(true);updCheck();}});
 setInterval(function(){updCheck();},NATIVE?30000:15000);setTimeout(function(){updCheck();},3000);
 try{if(!NATIVE&&"serviceWorker" in navigator&&/^https?:$/.test(location.protocol)){navigator.serviceWorker.register("sw.js").catch(function(){});}}catch(e){}
 })();
