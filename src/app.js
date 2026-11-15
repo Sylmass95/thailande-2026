@@ -1068,6 +1068,8 @@ function tcSync(silent,fresh,reset){
   if(TC.busy)return;TC.busy=true;TC.err="";if(!silent)render(true);
   fetch(aiBase()+"/api/tricount?link="+encodeURIComponent(link)+(fresh?"&fresh=1":""),{headers:aiHeaders()}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j&&j.error||("HTTP "+r.status));return j;});})
   .then(function(j){
+    /* Tricount indisponible (maintenance…) : le Minix renvoie la dernière lecture réussie ; on garde les données de l’app telles quelles */
+    if(j.stale){TC.err=tcStaleTxt(j);if(!silent)toast(TC.err);return;}
     /* seules les dépenses à partir du début du voyage comptent (avant : réservations, déjà dans le budget) */
     var all=j.expenses||[],truth=!!(S.budget&&S.budget.tcTruth),exps=truth?all:all.filter(function(x){return !/^\d{4}-\d{2}-\d{2}$/.test(x.date)||x.date>=tcFrom();});
     var totalAll=0;all.forEach(function(x){totalAll+=x.cur_tricount==="EUR"?x.amt_tricount:(x.cur==="EUR"?x.amt:x.cur==="THB"?x.amt/(S.set.rate||37.71):x.amt_tricount||0);});
@@ -1088,6 +1090,7 @@ function tcSync(silent,fresh,reset){
   .then(function(){TC.busy=false;if(UI.tab==="tricount")render(true);});
 }
 function tcAvailable(){return !!AI.tc;}
+function tcStaleTxt(j){return (j.stale_reason||"Tricount est indisponible pour l’instant.")+" L’app garde la dernière lecture réussie"+(j.fetched_at?", du "+cap(fmt(j.fetched_at*1000,TRIP_TZ,{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",hourCycle:"h23"})):"")+".";}
 /* Pourquoi Tricount n’est pas lisible, en clair */
 function tcWhyText(){
   if(AI.reach!=="ok")return "Minix injoignable : vérifiez Tailscale, puis Pratique → Réglages → Tester la connexion.";
@@ -1589,7 +1592,7 @@ function rcCompare(T){
   return rows;
 }
 function rcLoad(list,src){
-  RC.list=list;RC.src=src;RC.rows=rcCompare(list);RC.sel={};RC.done=null;RC.err="";RC.open=true;
+  RC.list=list;RC.src=src;RC.note="";RC.rows=rcCompare(list);RC.sel={};RC.done=null;RC.err="";RC.open=true;
   RC.rows.forEach(function(r){RC.sel[r.key]=true;});
   UI.tab="tricount";render();setTimeout(function(){var el=document.getElementById("rc-card");if(el&&el.scrollIntoView)try{el.scrollIntoView({block:"start"});}catch(e){}},50);
 }
@@ -1597,7 +1600,7 @@ function rcLive(){
   if(!AI.tc){toast(tcWhyText());return;}
   RC.busy=true;RC.err="";render(true);
   fetch(aiBase()+"/api/tricount?link="+encodeURIComponent(tcLink())+"&fresh=1",{headers:aiHeaders()}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j&&j.error||("HTTP "+r.status));return j;});})
-  .then(function(j){RC.busy=false;rcLoad(rcFromBridge(j.expenses||[]),"live");},function(e){RC.busy=false;RC.err="Lecture de Tricount impossible : "+((e&&e.message)||e);render(true);});
+  .then(function(j){RC.busy=false;rcLoad(rcFromBridge(j.expenses||[]),"live");RC.note=j.stale?tcStaleTxt(j)+" Comparaison faite avec ces données.":"";if(RC.note)render(true);},function(e){RC.busy=false;RC.err="Lecture de Tricount impossible : "+((e&&e.message)||e);render(true);});
 }
 /* applique les corrections cochées : sauvegarde d’abord */
 function rcResult(rows,sel){
@@ -1664,6 +1667,7 @@ function rcHtml(){
     return h+'</div>';
   }
   var rows=RC.rows,g=function(k){return rows.filter(function(r){return r.kind===k;});},before=expActive(),after=rcResult(rows,RC.sel);
+  if(RC.note)h+='<p class="small" style="color:var(--alert)">'+esc(RC.note)+'</p>';
   h+='<p class="small muted">Source : '+({live:"Tricount, lu à l’instant",paste:"liste collée",csv:"fichier CSV",capture:"capture lue par l’assistant"}[RC.src]||RC.src)+' · '+RC.list.length+' dépenses</p>';
   h+=rcTable([["Avant",catTotals(before),sumEur(before)],["Après",catTotals(after),sumEur(after)],["Tricount",catTotals(RC.list),sumEur(RC.list)]]);
   var sec=function(k,title,open){var L=g(k);if(!L.length)return "";return '<details style="margin-top:10px"'+(open?' open':'')+'><summary><b>'+title+' ('+L.length+')</b></summary><div class="row" style="margin:6px 0"><button class="cp" data-a="rcall" data-v="'+k+'" data-id="1">Tout cocher</button><button class="cp" data-a="rcall" data-v="'+k+'" data-id="0">Tout décocher</button></div>'+L.map(rcRowHtml).join("")+'</details>';};
