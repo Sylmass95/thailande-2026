@@ -8,3 +8,5 @@ deploy/.env
 deploy/.docker/
 *.log
 .DS_Store
+__pycache__/
+*.pyc
