@@ -57,6 +57,44 @@ def fetch_raw(token):
     raise RuntimeError("Authentification Tricount impossible")
 
 
+def explain(exc):
+    """Message clair, en français, pour une erreur de lecture de Tricount."""
+    code = getattr(getattr(exc, "response", None), "status_code", None)
+    if code is None:
+        m = re.match(r"(\d{3}) ", str(exc))
+        code = int(m.group(1)) if m else None
+    if code == 491:
+        return "Tricount est en maintenance (code 491) : réessayez plus tard."
+    if code == 429:
+        return "Trop de lectures de Tricount d’affilée (code 429) : réessayez dans quelques minutes."
+    if code in (401, 403, 466):
+        return f"Tricount refuse la connexion (code {code}) : réessayez plus tard."
+    if code == 404:
+        return "Tricount introuvable (code 404) : vérifiez le lien de partage."
+    if code and code >= 500:
+        return f"Les serveurs de Tricount ont un problème (code {code}) : réessayez plus tard."
+    return f"Lecture Tricount impossible : {exc}"
+
+
+def _last_path(token):
+    return CREDS.parent / f"last_{token}.json"
+
+
+def save_last(token, data):
+    try:
+        CREDS.parent.mkdir(parents=True, exist_ok=True)
+        _last_path(token).write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def load_last(token):
+    try:
+        return json.loads(_last_path(token).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
 def normalize(raw):
     tc = Tricount.from_dict(raw)
     names = {m.uuid: m.display_name for m in tc.members}
@@ -118,9 +156,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, hit[1])
             try:
                 data = normalize(fetch_raw(token))
-            except Exception as exc:  # erreur réseau, API modifiée, tricount introuvable…
-                return self._send(502, {"error": f"Lecture Tricount impossible : {exc}"})
+            except Exception as exc:  # maintenance, réseau, API modifiée, tricount introuvable…
+                reason = explain(exc)
+                print(f"Lecture Tricount impossible : {exc}", flush=True)
+                # Tricount indisponible : on renvoie la dernière lecture réussie, signalée comme ancienne.
+                last = hit[1] if hit else load_last(token)
+                if last:
+                    return self._send(200, {**last, "stale": True, "stale_reason": reason})
+                return self._send(502, {"error": reason})
             _cache[token] = (time.time(), data)
+            save_last(token, data)
         return self._send(200, data)
 
 
