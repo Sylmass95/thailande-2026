@@ -13,21 +13,17 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-import tricount.client as TC
 from tricount import Tricount, load_client
 from tricount.client import BASE_URL
 
 CREDS = Path(os.environ.get("TRICOUNT_CREDENTIALS", "/data/tricount_credentials.json"))
 DEFAULT_LINK = os.environ.get("TRICOUNT_LINK", "")
 CACHE_SECONDS = int(os.environ.get("TRICOUNT_CACHE_SECONDS", "60"))
-# Version de l’appli Android annoncée à Tricount : modifiable sans toucher au code (deploy/.env)
-if os.environ.get("TRICOUNT_USER_AGENT"):
-    TC.USER_AGENT = os.environ["TRICOUNT_USER_AGENT"]
 EXTRA_HEADERS = {"X-Bunq-Language": "fr_FR", "X-Bunq-Region": "fr_FR", "X-Bunq-Geolocation": "0 0 0 0 000", "Cache-Control": "no-cache"}
 _lock = threading.Lock()
 _client = None
 _cache = {}
-_fail = {"until": 0.0, "last_try": 0.0, "renewed": 0.0}  # pause après un échec, pour ne pas insister auprès de Tricount
+_fail = {"until": 0.0, "last_try": 0.0}  # pause après un échec, pour ne pas insister auprès de Tricount
 
 
 class TricountError(Exception):
@@ -47,12 +43,10 @@ def token_from(value):
     return None
 
 
-def client(force=False, new_device=False):
+def client(force=False):
     global _client
-    if _client is None or force or new_device:
+    if _client is None or force:
         CREDS.parent.mkdir(parents=True, exist_ok=True)
-        if new_device and CREDS.exists():
-            CREDS.replace(CREDS.with_name(CREDS.stem + ".ancien.json"))  # nouvel appareil : nouvelle clé
         _client = load_client(CREDS)
         _client.session.headers.update(EXTRA_HEADERS)
     return _client
@@ -72,23 +66,18 @@ def tricount_error(resp):
 
 def fetch_raw(token):
     """Lit le tricount brut (pour garder le montant en devise d'origine, amount_local).
-    En cas de refus : nouvelle session, puis (au plus une fois toutes les 6 h) nouvel appareil."""
-    for attempt in range(3):
-        if attempt == 2:
-            if time.time() - _fail["renewed"] < 6 * 3600:
-                break
-            _fail["renewed"] = time.time()
-        c = client(force=attempt == 1, new_device=attempt == 2)
+    Session expirée (401/403) : une nouvelle session, une seule fois."""
+    for attempt in range(2):
+        c = client(force=attempt == 1)
         resp = c.session.get(f"{BASE_URL}/v1/user/{c.user_id}/registry", params={"public_identifier_token": token}, timeout=20)
         if resp.ok:
             for item in resp.json().get("Response", []):
                 if "Registry" in item:
                     return item["Registry"]
             raise RuntimeError("Tricount introuvable")
-        if resp.status_code == 404 or (attempt == 1 and resp.status_code not in (401, 403, 466, 491)):
+        if attempt == 1 or resp.status_code not in (401, 403):
             raise tricount_error(resp)
-        last = resp
-    raise tricount_error(last)
+    raise RuntimeError("Lecture Tricount impossible")
 
 
 def explain(exc):
