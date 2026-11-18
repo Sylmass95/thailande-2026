@@ -773,8 +773,10 @@ function aiSend(text,speak){
     var hist=AI.msgs.slice(-12).map(function(m){var c=m.content;if(m.prop)c+="\n[Bloc PROGRAMME proposé pour le(s) jour(s) "+m.prop.map(function(v){return v.n;}).join(", ")+" : "+(m.applied==="ok"?"appliqué":m.applied==="no"?"ignoré":"en attente")+"]";if(m.exp)c+="\n[Bloc DEPENSES proposé : "+(m.expApplied?"ajouté":"en attente")+"]";if(m.mod)c+="\n[Bloc DEPENSES_MODIF proposé ("+m.mod.length+") : "+(m.modApplied||"en attente")+"]";if(m.del)c+="\n[Bloc DEPENSES_SUPPR proposé ("+m.del.length+") : "+(m.delApplied||"en attente")+"]";if(m.tcl)c+="\n[Liste Tricount extraite : "+m.tcl.length+" dépenses]";if(m.bud)c+="\n[Bloc BUDGET_MODIF proposé ("+m.bud.length+") : "+(m.budApplied||"en attente")+"]";return {role:m.role,content:c};});
     var finish=function(out,err){
       AI.busy=false;AI.ctl=null;
-      if(out){var ex=aiExtract(out);out=ex.clean;AI.msgs.push({role:"assistant",content:ex.clean||"(proposition ci-dessous)",prop:ex.prop,exp:ex.exp,mod:ex.mod,del:ex.del,tcl:ex.tcl,bud:ex.bud,err:ex.err});saveAi();}
+      var exx=null;
+      if(out){var ex=aiExtract(out);exx=ex;out=ex.clean;AI.msgs.push({role:"assistant",content:ex.clean||"(proposition ci-dessous)",prop:ex.prop,exp:ex.exp,mod:ex.mod,del:ex.del,tcl:ex.tcl,bud:ex.bud,err:ex.err});saveAi();}
       if(err)toast(err);
+      if(AI.tclAuto){tclStep(exx,err);return;}
       render(true);aiBottom();
       if(out&&speak){startQueue({title:"Assistant",sub:"Audio guide personnalisé"},[{t:"",x:aiPlain(out)}],0);}
     };
@@ -836,7 +838,7 @@ function guessCat(title,cat){
   var R=[["vols",/\bvols?\b|flight|avion|airasia|qatar|nok ?air|thai airways|bangkok airways/],["transport",/transport|taxi|grab|bolt|tuk|bateau|boat|longtail|ferry|train|bus|minivan|songthaew|essence|parking|transfert|chauffeur/],
    ["bienetre",/massage|spa|bien.?[êe]tre/],
    ["nourriture",/food|nourriture|restau|repas|d[ée]jeuner|d[îi]ner|dinner|lunch|breakfast|meal|petit.d[ée]j|caf[ée]|coffee|boisson|drink|bi[èe]re|beer|street|march[ée]|snack|eau|water|7.?eleven|courses|supermarch|pad thai|curry/],
-   ["excursions",/excursion|visite|temple|wat |entr[ée]e|ticket|billet|parc|park|tour|activit|kayak|snorkel|plong|atv|canyon|safari|mus[ée]e/],
+   ["excursions",/excursion|visite|temple|wat |entr[ée]e|ticket|billet|parc|park|tour|activit|kayak|snorkel|plong|atv|canyon|safari|mus[ée]e|taxe|droits?|lac |lake|phi ?phi|hong/],
    ["hebergement",/h[ôo]tel|hotel|h[ée]bergement|logement|resort|booking|airbnb|nuit|d[ée]p[ôo]t/],
    ["shopping",/shopping|souvenir|v[êe]tement|cadeau|achat|pharmacie/]];
   for(var i=0;i<R.length;i++){if(R[i][1].test(s))return R[i][0];}
@@ -1187,7 +1189,7 @@ function vTricount2(){
   }else{
     h+='<p class="small">La lecture automatique de Tricount passe par l’API perso installée sur votre serveur Minix (version Docker). '+(NATIVE?'Dans l’APK, indiquez l’adresse du serveur dans Pratique → Réglages.':'Elle n’est pas disponible dans l’app Claude : utilisez la capture d’écran ci-dessous.')+'</p>';
   }
-  h+='<div class="row" style="margin-top:8px"><button class="cp" data-a="tcshot">Capture Tricount → Assistant</button>'+(!link?'<a class="cp" href="'+TRICOUNT_PLAY+'" target="_blank" rel="noopener">Installer Tricount</a>':'')+'</div></div>';
+  h+='<div class="row" style="margin-top:8px"><button class="cp" data-a="tcshot">Captures d’écran Tricount</button>'+(!link?'<a class="cp" href="'+TRICOUNT_PLAY+'" target="_blank" rel="noopener">Installer Tricount</a>':'')+'</div></div>';
   h+=rcHtml();
   h+=tcRecentHtml();
   h+=dayExpHtml();
@@ -1378,7 +1380,7 @@ document.addEventListener("click",function(e){
     case "rclive":RC.done=null;rcLive();break;
     case "rcpaste":RC.paste=(($("#rc-paste")||{}).value||"");var rp=rcParse(RC.paste);if(rp.error){RC.err=rp.error;render(true);}else if(!rp.list.length){RC.err="Aucune dépense reconnue ("+rp.skipped+" ligne(s) ignorée(s)).";render(true);}else{rcLoad(rp.list,"paste");toast(rp.list.length+" dépense(s) lue(s)"+(rp.skipped?", "+rp.skipped+" ligne(s) ignorée(s)":""));}break;
     case "rccsv":var rf=$("#rc-file");if(rf)rf.click();break;
-    case "rcshot":UI.tab="ai";AI.draft="Voici une capture de notre Tricount : extrais la liste complète des dépenses pour la comparer avec l’app.";render();var rsf=$("#ai-gal");if(rsf)rsf.click();else toast("Photos non disponibles ici");break;
+    case "rcshot":var tsi=$("#tc-shots");if(tsi)tsi.click();else toast("Photos non disponibles ici");break;
     case "rcapply":rcApply();break;
     case "rcall":if(RC.rows){RC.rows.forEach(function(r){if(r.kind===v)RC.sel[r.key]=id==="1";});var ys=window.scrollY;render(true);window.scrollTo(0,ys);}break;
     case "rcclose":RC.rows=null;RC.done=null;RC.list=null;render(true);break;
@@ -1393,7 +1395,7 @@ document.addEventListener("click",function(e){
     case "budscen":applyScenario(v);toast(v==="max"?"Répartition 4 400 € appliquée":"Répartition 4 000 € appliquée");render(true);break;
     case "budseed":if(confirm("Remplacer le budget par les valeurs du roadbook ?")){seedBudget(true);toast("Budget du roadbook rechargé");render(true);}break;
     case "csvpick":var cf=$("#csv-file");if(cf)cf.click();break;
-    case "tcshot":UI.tab="ai";AI.draft="Voici une capture de notre Tricount : ajoute ces dépenses au budget.";render();var af=$("#ai-gal");if(af)af.click();else toast("Photos non disponibles ici");break;
+    case "tcshot":var tsj=$("#tc-shots");if(tsj)tsj.click();else toast("Photos non disponibles ici");break;
     case "aichip":var ch=AI_CHIPS.filter(function(c){return c[0]===v;})[0];if(!ch)break;
       if(v==="photo"){AI.draft=ch[2];render(true);var fi=$("#ai-file");if(fi)fi.click();else toast("Photos non disponibles ici");}
       else if(v==="thai"){AI.draft=ch[2];render(true);var ta=$("#ai-text");if(ta){ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);}}
@@ -1416,6 +1418,7 @@ document.addEventListener("click",function(e){
 });
 document.addEventListener("change",function(e){
   var el=e.target,a=el.getAttribute&&el.getAttribute("data-a");if(!a)return;
+  if(a==="tcshots"){var fs=[].slice.call(el.files||[]).slice(0,8);el.value="";if(fs.length)tclAuto(fs);return;}
   if(a==="aifile"){var fl=el.files&&el.files[0];if(fl){AI.img=fl;if(AI.imgUrl){try{URL.revokeObjectURL(AI.imgUrl);}catch(e){}}AI.imgUrl=URL.createObjectURL(fl);var ta2=$("#ai-text");if(ta2)AI.draft=ta2.value;render(true);aiBottom();}return;}
   if(a==="aipos"){S.set.aiPos=el.checked;save();return;}
   if(a==="restepaid"){resteToggle(el.getAttribute("data-id"),el.checked);return;}
@@ -1593,7 +1596,8 @@ function rcCompare(T){
 }
 function rcLoad(list,src){
   RC.list=list;RC.src=src;RC.note="";RC.rows=rcCompare(list);RC.sel={};RC.done=null;RC.err="";RC.open=true;
-  RC.rows.forEach(function(r){RC.sel[r.key]=true;});
+  /* capture ou liste collée : souvent partielle, donc « en trop » décoché par défaut (rien n’est supprimé sans le vouloir) */
+  RC.rows.forEach(function(r){RC.sel[r.key]=!(r.kind==="extra"&&src!=="live");});
   UI.tab="tricount";render();setTimeout(function(){var el=document.getElementById("rc-card");if(el&&el.scrollIntoView)try{el.scrollIntoView({block:"start"});}catch(e){}},50);
 }
 function rcLive(){
@@ -1650,7 +1654,8 @@ function rcRowHtml(r){
   return '<label class="ck" style="align-items:flex-start;gap:10px;padding:8px 0;border-top:1px solid var(--line)">'+cb+'<span style="flex:1">'+body+'</span></label>';
 }
 function rcHtml(){
-  var h='<div class="card" id="rc-card"><h3>Synchroniser avec Tricount</h3>';
+  var h='<div class="card" id="rc-card"><h3>Synchroniser avec Tricount</h3><input type="file" id="tc-shots" accept="image/*" multiple data-a="tcshots" hidden>';
+  if(AI.tclAuto)return h+'<p class="small"><b>Lecture des captures par l’assistant : '+Math.min(AI.tclAuto.i+1,AI.tclAuto.files.length)+' sur '+AI.tclAuto.files.length+'…</b></p><p class="small muted">La comparaison avec l’app s’ouvrira toute seule.</p></div>';
   if(RC.done){
     var d=RC.done,gap=d.afterTot-d.tcTot,ok=Math.abs(gap)<=5;
     h+='<p class="small" style="font-weight:700;color:'+(ok?'var(--ok)':'var(--alert)')+'">'+(ok?'✓ Total de l’app = total Tricount':'⚠ Écart avec Tricount')+' : '+eurTxt(d.afterTot)+' contre '+eurTxt(d.tcTot)+' (écart '+eurTxt(gap)+')</p>';
@@ -1660,9 +1665,10 @@ function rcHtml(){
   }
   if(!RC.rows){
     h+='<p class="small">L’app compare ses dépenses à celles de Tricount, vous montre les différences, puis corrige ce que vous validez. Remboursements entre vous ignorés, montant total et devise de Tricount conservés.</p>';
-    if(tcPossible())h+='<div class="row" style="margin-top:8px"><button class="btn" data-a="rclive"'+(RC.busy?' disabled':'')+'>'+(RC.busy?'Lecture de Tricount…':'Lire Tricount et comparer')+'</button></div>';
+    h+='<div class="row" style="margin-top:8px"><button class="btn" data-a="rcshot">Captures d’écran Tricount</button>'+(tcPossible()?'<button class="btn alt" data-a="rclive"'+(RC.busy?' disabled':'')+'>'+(RC.busy?'Lecture de Tricount…':'Lire Tricount en direct')+'</button>':'')+'</div>';
+    h+='<p class="small muted" style="margin-top:6px">Captures : faites une ou plusieurs captures de la liste des dépenses dans l’appli Tricount, puis choisissez-les. L’assistant les lit et la comparaison s’ouvre toute seule.</p>';
     h+='<details style="margin-top:10px"><summary class="small">Coller une liste, importer un CSV ou une capture</summary><div style="margin-top:8px"><textarea id="rc-paste" class="txt" rows="5" placeholder="Une dépense par ligne (12/11 Taxi 120 THB) ou le contenu d’un export CSV de Tricount">'+esc(RC.paste)+'</textarea>'
-      +'<div class="row" style="margin-top:8px"><button class="btn alt" data-a="rcpaste">Comparer cette liste</button><button class="cp" data-a="rccsv">Importer un CSV</button><input type="file" id="rc-file" accept=".csv,text/csv,text/plain" data-a="rcfile" hidden><button class="cp" data-a="rcshot">Capture → Assistant</button></div></div></details>';
+      +'<div class="row" style="margin-top:8px"><button class="btn alt" data-a="rcpaste">Comparer cette liste</button><button class="cp" data-a="rccsv">Importer un CSV</button><input type="file" id="rc-file" accept=".csv,text/csv,text/plain" data-a="rcfile" hidden></div></div></details>';
     if(RC.err)h+='<p class="small" style="color:var(--alert);margin-top:8px">'+esc(RC.err)+'</p>';
     return h+'</div>';
   }
@@ -1671,7 +1677,7 @@ function rcHtml(){
   h+='<p class="small muted">Source : '+({live:"Tricount, lu à l’instant",paste:"liste collée",csv:"fichier CSV",capture:"capture lue par l’assistant"}[RC.src]||RC.src)+' · '+RC.list.length+' dépenses</p>';
   h+=rcTable([["Avant",catTotals(before),sumEur(before)],["Après",catTotals(after),sumEur(after)],["Tricount",catTotals(RC.list),sumEur(RC.list)]]);
   var sec=function(k,title,open){var L=g(k);if(!L.length)return "";return '<details style="margin-top:10px"'+(open?' open':'')+'><summary><b>'+title+' ('+L.length+')</b></summary><div class="row" style="margin:6px 0"><button class="cp" data-a="rcall" data-v="'+k+'" data-id="1">Tout cocher</button><button class="cp" data-a="rcall" data-v="'+k+'" data-id="0">Tout décocher</button></div>'+L.map(rcRowHtml).join("")+'</details>';};
-  if(RC.src!=="live"&&g("extra").length>Math.max(3,RC.list.length/2))h+='<p class="small" style="color:var(--alert);margin-top:8px">La liste lue semble incomplète : tout ce qui n’y figure pas est proposé à la suppression. Décochez « En trop dans l’app » si la liste ne contient pas toutes les dépenses.</p>';
+  if(RC.src!=="live"&&g("extra").length)h+='<p class="small muted" style="margin-top:8px">Les dépenses absentes '+(RC.src==="capture"?'des captures':'de la liste')+' sont rangées dans « En trop dans l’app » mais <b>non cochées</b> : une capture ne montre souvent qu’une partie de Tricount. Cochez-les seulement si la liste est complète.</p>';
   h+=sec("diff","Montants différents",true)+sec("missing","Manquantes dans l’app",true)+sec("extra","En trop dans l’app",true)+sec("same","Identiques (liées à Tricount)",false);
   if(!g("diff").length&&!g("missing").length&&!g("extra").length)h+='<p class="small" style="color:var(--ok);margin-top:8px">✓ Aucune différence avec Tricount.</p>';
   h+='<div class="row" style="margin-top:12px"><button class="btn" data-a="rcapply">Appliquer les corrections cochées</button><button class="btn alt" data-a="rcclose">Annuler</button></div>';
@@ -1815,6 +1821,28 @@ function aiExpCards(m,i){
   return h;
 }
 
+
+/* --- captures d’écran Tricount : lues une par une par l’assistant, puis comparées automatiquement --- */
+var TCL_PROMPT="Capture d’écran de notre Tricount : recopie toutes les dépenses visibles dans le bloc TRICOUNT_LISTE (montant total, devise affichée, date, payeur, sans les remboursements). Ne réponds rien d’autre.";
+function tclAuto(files){
+  if(AI.busy){toast("L’assistant est occupé : réessayez dans un instant");return;}
+  if(AI.mode!=="server"&&AI.mode!=="claude"){toast(aiBase()&&AI.reach!=="ok"?"Assistant injoignable : activez Tailscale, puis réessayez":"Assistant indisponible : il faut l’assistant pour lire les captures");return;}
+  AI.tclAuto={files:files,i:0,acc:[]};RC.err="";RC.done=null;RC.rows=null;
+  UI.tab="tricount";render();tclNext();
+}
+function tclNext(){var T=AI.tclAuto;if(!T)return;AI.img=T.files[T.i];aiSend(TCL_PROMPT+(T.files.length>1?" (capture "+(T.i+1)+" sur "+T.files.length+")":""),false);}
+function tclStep(ex,err){
+  var T=AI.tclAuto;
+  if(err||!ex){AI.tclAuto=null;RC.err="Lecture des captures interrompue : "+(err||"réponse vide de l’assistant");render(true);return;}
+  if(ex.tcl)T.acc=T.acc.concat(ex.tcl);
+  T.i++;
+  if(T.i<T.files.length){render(true);setTimeout(tclNext,200);return;}
+  AI.tclAuto=null;
+  var seen={},list=T.acc.filter(function(o){var k=(parseDateStr(o.date)||"")+"|"+normH(o.title)+"|"+Math.round(o.amt*100)+"|"+o.cur;if(seen[k])return false;seen[k]=1;return true;});
+  if(!list.length){RC.err="L’assistant n’a trouvé aucune dépense dans "+(T.files.length>1?"ces captures":"cette capture")+". Essayez une capture de la liste des dépenses.";render(true);return;}
+  toast(list.length+" dépense(s) lue(s) sur "+T.files.length+" capture(s)");
+  rcLoad(list.map(function(o,k){return rcItem(o,k);}),"capture");
+}
 
 /* --- bloc BUDGET_MODIF : l’assistant propose des changements de réglages du budget --- */
 var BUD_FIELDS={objectif:"objectif",total:"objectif",maximum:"maximum",max:"maximum",jour:"jour",budget_jour:"jour",categorie:"categorie","catégorie":"categorie",poste_jour:"poste_jour",repas_jour:"repas_jour",reste_ajout:"reste_ajout",reste_modif:"reste_modif",reste_paye:"reste_paye","reste_payé":"reste_paye",reste_suppr:"reste_suppr"};

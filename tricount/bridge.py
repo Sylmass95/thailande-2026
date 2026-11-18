@@ -47,7 +47,13 @@ def client(force=False):
     global _client
     if _client is None or force:
         CREDS.parent.mkdir(parents=True, exist_ok=True)
-        _client = load_client(CREDS)
+        try:
+            _client = load_client(CREDS)
+        except Exception as exc:  # refus à l’enregistrement : on garde le message exact de Tricount
+            resp = getattr(exc, "response", None)
+            if resp is not None:
+                raise tricount_error(resp) from exc
+            raise
         _client.session.headers.update(EXTRA_HEADERS)
     return _client
 
@@ -83,8 +89,8 @@ def fetch_raw(token):
 def explain(exc):
     """Message clair, en français, pour une erreur de lecture de Tricount."""
     if isinstance(exc, TricountError):
-        if exc.status == 491:
-            return f"Tricount refuse la lecture faite par le relais du Minix (code 491 : « {exc.desc} »). Si l’appli Tricount fonctionne, c’est le relais non officiel qui est refusé, pas une vraie panne."
+        if exc.status in (422, 491):
+            return f"Tricount refuse le relais non officiel du Minix (code {exc.status} : « {exc.desc} »). Ce n’est pas une panne : utilisez « Captures d’écran Tricount » dans l’onglet Tricount."
         if exc.status == 404:
             return "Tricount introuvable (code 404) : vérifiez le lien de partage."
         return f"Tricount refuse la lecture (code {exc.status} : « {exc.desc} »)."
